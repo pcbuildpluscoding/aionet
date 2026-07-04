@@ -45,8 +45,8 @@ func (m ioMode) String() string {
 }
 
 const (
-	PEV_READ  = unix.POLLIN
-	PEV_WRITE = unix.POLLOUT
+	PEV_READ  = unix.EPOLLIN
+	PEV_WRITE = unix.EPOLLOUT
 	PEV_ERROR = unix.EPOLLERR
 	PEV_RESET = unix.EPOLLRDNORM | unix.EPOLLWRNORM
 )

@@ -2,6 +2,7 @@ package aionet
 
 import (
 	"net"
+	"time"
 
 	"github.com/pcbuildpluscoding/aionet/dtype"
 	"golang.org/x/sys/unix"
@@ -63,16 +64,15 @@ func (d *HdpDialer) start() (*HdpDialer, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = s.init()
-	if err != nil {
-		return nil, err
-	}
-	s1 := s.newSocket1()
 	readyCh := make(chan bool, 1)
 	refNum := [2]uint16{getRefNum(), 0}
+	cidR := "dialRead1-" + time.Now().Format("05.00000")
+	s1 := s.newSocket1(cidR)
 	go newHdpRead1(s1, &refNum, d.tpt).run(readyCh)
 	<-readyCh
+	cidW := "dialWrite1-" + time.Now().Format("05.00000")
+	s1 = s.newSocket1(cidW)
 	go newHdpWrite1(s1, &refNum, d.tpt).run(readyCh)
 	<-readyCh
-	return d, nil
+	return d, s.init(cidR + "|" + cidW)
 }

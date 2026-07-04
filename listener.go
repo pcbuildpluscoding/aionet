@@ -11,6 +11,7 @@ import (
 // ==================================================================//
 type HdpListener struct {
 	*socket
+	cid            string
 	connectTimeout time.Duration
 	tpt            dtype.MultiCh
 }
@@ -22,18 +23,18 @@ func (d *HdpListener) Cid() string {
 
 // ===========================================================================
 func (c *HdpListener) Accept() (*HdpConn, error) {
-	logger.Debugf("%s is accepting connections ...", c.cid)
+	logger.Debugf("%s is accepting connections on %s ...", c.cid, c.laddr.String())
 
 	for {
 		select {
 		case <-time.After(c.connectTimeout):
 			logger.Debugf("%s is ignoring accept timeout ...", c.cid)
-		case err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ):
+		case err := <-c.submitReq(c.cid, unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ):
 			switch err {
 			case io.ErrUnexpectedEOF, unix.EINTR:
 				continue
 			case nil:
-				logger.Debugf("HDPListener accepted a connection ...")
+				logger.Debugf("%s accepted a connection ...", c.cid)
 				return c.onAccept()
 			default:
 				return nil, err
@@ -71,12 +72,23 @@ func (c *HdpListener) onAccept() (*HdpConn, error) {
 // ================================================================
 func (c *HdpListener) start() (*HdpListener, error) {
 	logger.Debugf("%s is starting ...", c.cid)
+	err := c.init(c.cid + "|")
+	if err != nil {
+		return nil, err
+	}
+	s, err := newSocket("listen", unix.SOCK_DGRAM, 0, nil, nil)
+	if err != nil {
+		return nil, err
+	}
 	readyCh := make(chan bool, 1)
 	refNum := [2]uint16{getRefNum(), 0}
-	s1 := c.newSocket1()
+	cidR := "acceptRead1-" + time.Now().Format("05.00000")
+	s1 := s.newSocket1(cidR)
 	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
+	cidW := "acceptWrite1-" + time.Now().Format("05.00000")
+	s1 = s.newSocket1(cidW)
 	go newHdpWrite1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
-	return c, c.init()
+	return c, s.init(cidR + "|" + cidW)
 }

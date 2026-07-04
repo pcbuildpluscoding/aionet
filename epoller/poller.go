@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -312,12 +313,12 @@ func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 	key := int(pev.Fd)
 	race := p.race[key]
 	switch {
-	case race[R] == nil:
+	case race == [2]*ioRace{}:
 		logger.Errorf("fd[%d] EV_READ ioRace does not exist for events, error : %x, %v", pev.Fd, pev.Events, ev.err)
 	case pev.Events&PEV_ERROR != 0:
 		logger.Debugf("%s got EV_ERROR ...", race[R].cid)
 		return
-	case pev.Events&PEV_READ != 0:
+	case pev.Events&unix.EPOLLIN != 0:
 		if race[R].ch != nil {
 			logger.Debugf("%s is returning read-readiness ...", race[R].cid)
 			race[R].timedAt = ev.timedAt
@@ -327,7 +328,20 @@ func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 			race[R].ready = true
 		}
 		race[R].armed = false
-	case pev.Events&PEV_WRITE != 0:
+	default:
+		// bug-fix : confirm that a read-ready request exists for this fd
+		// rearm registered read event, otherwise epoller effectively deletes the previous read-ready state
+		if race[R].ch != nil {
+			err := p.rearm1(reqRef{
+				fd:   int(pev.Fd),
+				mode: race[R].mode,
+			})
+			race[R].armed = true
+			logger.Debugf("%s %s readiness polling is rearmed : %v ...", race[R].cid, race[R].mode.String(), err)
+		}
+	}
+	switch {
+	case pev.Events&unix.EPOLLOUT != 0:
 		if race[W].ch != nil {
 			logger.Debugf("%s is returning write-readiness ...", race[W].cid)
 			race[W].timedAt = ev.timedAt
@@ -340,14 +354,6 @@ func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 	default:
 		// bug-fix : confirm that a read-ready request exists for this fd
 		// rearm registered read event, otherwise epoller effectively deletes the previous read-ready state
-		if race[R].ch != nil {
-			err := p.rearm1(reqRef{
-				fd:   int(pev.Fd),
-				mode: race[R].mode,
-			})
-			race[R].armed = true
-			logger.Debugf("%s %s readiness polling is rearmed : %v ...", race[R].cid, race[R].mode.String(), err)
-		}
 		if race[W].ch != nil {
 			err := p.rearm1(reqRef{
 				fd:   int(pev.Fd),
@@ -639,9 +645,10 @@ func (p *epoller) wakeup(cpuid int) error {
 
 // ==================================================================
 func (p *epoller) watch(ref reqRef) error {
-	p.race[ref.fd] = [2]*ioRace{newIoRace(ref.cid, EV_READ), newIoRace(ref.cid, EV_WRITE)}
+	cid := strings.Split(ref.cid, "|")
+	p.race[ref.fd] = [2]*ioRace{newIoRace(cid[R], EV_READ), newIoRace(cid[W], EV_WRITE)}
 
-	logger.Debugf("epoller is calling a watch on %s[%d]", ref.cid, ref.fd)
+	logger.Debugf("epoller is calling a watch on conn[%d] with cid[%s, %s]", ref.fd, cid[R], cid[W])
 	return unix.EpollCtl(p.pfd, unix.EPOLL_CTL_ADD, ref.fd,
 		&unix.EpollEvent{Fd: int32(ref.fd), Events: uint32(ref.flags)})
 }

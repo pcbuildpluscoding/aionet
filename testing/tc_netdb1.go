@@ -16,7 +16,10 @@ func tc_netdb1(t *testing.T, params Result, args ...any) Result {
 		if err != nil {
 			return err
 		}
-		d := &aio.HdpDialer{}
+		d, err := aio.NewHdpDialer()
+		if err != nil {
+			return err
+		}
 
 		errCh := make(chan error, 1)
 		readyCh := [2]chan bool{make(chan bool, 1), make(chan bool, 1)}

@@ -245,7 +245,7 @@ func (c MultiCh) SendEvent(i int, data ...any) HdpEvent {
 
 // ==================================================================
 func (c MultiCh) SendEvent1(i int, req HdpEvent) HdpEvent {
-	logger.Debugf("got event : %v", req)
+	// logger.Debugf("got event : %v", req)
 	readyCh := make(chan bool, 1)
 	go func() {
 		<-readyCh

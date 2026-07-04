@@ -11,14 +11,14 @@ import (
 
 // ===========================================================================
 type hdpRead1 struct {
-	*socket1
+	socket1
 	refNum *[2]uint16
 	tpt    dtype.MultiCh
 }
 
 // ===========================================================================
 func (c *hdpRead1) handle(req dtype.HdpEvent) {
-	// logger.Debugf("%s is handling a request ...", c.cid)
+	logger.Debugf("%s is handling a request : %v ...", c.cid, req)
 	f := func() dtype.HdpEvent {
 		switch flag := req.Flag1(); flag {
 		case dtype.HDP_ACCEPT:
@@ -47,7 +47,7 @@ func (c *hdpRead1) onAccept(res dtype.HdpEvent) dtype.HdpEvent {
 	b := make([]byte, 14)
 	// read the serviceConn address
 	var err error
-	n, raddr, err := c.onReadFrom(b, 0)
+	n, raddr, err := c.onReadFrom(c.cid, b, 0)
 	if err != nil {
 		err = NewHdpError(ErrReadFromNewConn, c.cid, "onConnect", n, err)
 		return res.With(err)
@@ -120,7 +120,7 @@ func (c *hdpRead1) onConnect(req dtype.HdpEvent) dtype.HdpEvent {
 		b := make([]byte, 14)
 		// read the serviceConn address
 		var err error
-		n, raddr, err := c.onReadFrom(b, 0)
+		n, raddr, err := c.onReadFrom(c.cid, b, 0)
 		if err != nil {
 			return NewHdpError(ErrReadFromNewConn, c.cid, "onConnect", n, err)
 		}
@@ -270,10 +270,11 @@ func (c *hdpRead1) parseHeader() ([]byte, error) {
 // ===========================================================================
 func (c *hdpRead1) readHeader(b []byte) error {
 	// logger.Debugf("%s is wanting read readiness ...", c.cid)
-	err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ)
+	err := <-c.submitReq(c.cid, unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ)
 	if err != nil {
 		return err
 	}
+	logger.Debugf("%s got read-readiness ...", c.cid)
 	for nn := 0; nn < len(b); {
 		n, err := c.read(b[nn:])
 		if n > 0 {
@@ -311,14 +312,14 @@ func (c *hdpRead1) run(readyCh chan bool) {
 
 // ===========================================================================
 type hdpWrite1 struct {
-	*socket1
+	socket1
 	refNum *[2]uint16
 	tpt    dtype.MultiCh
 }
 
 // ===========================================================================
 func (c *hdpWrite1) handle(req dtype.HdpEvent) {
-	// logger.Debugf("%s hdpWrite is handling a request ...", c.cid)
+	logger.Debugf("%s is handling a request : %v ...", c.cid, req)
 	f := func() dtype.HdpEvent {
 		switch req.Flag1() {
 		case dtype.HDP_CONNECT_ACK:
@@ -454,7 +455,7 @@ func (c *hdpWrite1) connectHdp(req dtype.HdpEvent) dtype.HdpEvent {
 	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
 
 	logger.Debugf("%s hdpWrite connecting to remote address : %s", c.cid, req.Addr("raddr").String())
-	n, err := c.onWriteTo(b, req.Addr("raddr"))
+	n, err := c.onWriteTo(c.cid, b, req.Addr("raddr"))
 	if err != nil {
 		err = NewHdpError(ErrWriteToNewConn, c.cid, "connectHDP", n, err)
 	}
@@ -519,7 +520,7 @@ func (c *hdpWrite1) write1(req dtype.HdpEvent) dtype.HdpEvent {
 // writeHeader
 // ---------------------------------------------------------------//
 func (c *hdpWrite1) writeHeader(b []byte) error {
-	err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
+	err := <-c.submitReq(c.cid, unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/pcbuildpluscoding/aionet/dtype"
 	"golang.org/x/sys/unix"
 )
 
@@ -15,6 +14,7 @@ import (
 // ================================================================//
 type socket1 struct {
 	*socket
+	cid string
 	// state      [2]dtype.HDP_STATE1
 	windowSize uint16
 	suspended  bool
@@ -61,7 +61,7 @@ func (s *socket1) bind() error {
 	s.laddr = sockaddrToUDP(lsa)
 
 	logger.Debugf("%s is starting ...", s.cid)
-	err = s.init()
+	err = s.init(s.cid)
 	logger.Debugf("%s is started.", s.cid)
 	return err
 }
@@ -146,7 +146,7 @@ func (c *socket1) connect(raddr sockaddr, timeout time.Duration) error {
 
 	for {
 		select {
-		case err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE):
+		case err := <-c.submitReq(c.cid, unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE):
 			if err != nil {
 				return err
 			}
@@ -168,34 +168,4 @@ func (c *socket1) connectToPeer(raddr sockaddr, errCh chan error) {
 	}
 
 	errCh <- unix.Connect(c.fd, rsa)
-}
-
-// ================================================================//
-// socket2
-// ================================================================//
-type socket2 struct {
-	*socket
-	defaultTimeout uint16
-	resultCh       chan dtype.HdpEvent
-	state          [2]dtype.HDP_STATE2
-	statet         Statet
-	suspended      bool
-	tpt            dtype.MultiCh
-}
-
-// ================================================================
-func (c *socket2) getTimedEvent(msec uint16, inputRes dtype.HdpEvent, eventCh <-chan dtype.HdpEvent) dtype.HdpEvent {
-	if msec == 0 {
-		msec = c.defaultTimeout
-	}
-	dura := time.Duration(msec) * time.Millisecond
-	select {
-	case <-time.After(dura):
-		// inputRes should have the required resumption flag preset, for timeout occurance
-		logger.Warnf("%s while in %s got event timeout ...", c.cid, c.state[0].String())
-		return inputRes.With(NewHdpError(ErrTimeout, c.cid))
-	case ev := <-eventCh:
-		logger.Debugf("%s while in %s got event : %v", c.cid, c.state[0].String(), ev)
-		return ev
-	}
 }

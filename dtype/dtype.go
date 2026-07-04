@@ -421,7 +421,7 @@ func (r HdpEvent) Respond(args ...any) {
 	res.With(args...)
 	altCh := res.Ch("altCh")
 	ch := r.Ch()
-	logger.Debugf("HdpEvent got caller result channel and altCh : %v, %v", ch, altCh)
+	// logger.Debugf("HdpEvent got caller result channel and altCh : %v, %v", ch, altCh)
 	if ch != nil {
 		ch <- res
 	} else if altCh != nil {

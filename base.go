@@ -45,7 +45,7 @@ func getRefNum() uint16 {
 }
 
 // ===========================================================================
-func newHdpRead1(s *socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead1 {
+func newHdpRead1(s socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead1 {
 	return &hdpRead1{
 		socket1: s,
 		refNum:  rn,
@@ -54,7 +54,7 @@ func newHdpRead1(s *socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead1 {
 }
 
 // ===========================================================================
-func newHdpWrite1(s *socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite1 {
+func newHdpWrite1(s socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite1 {
 	return &hdpWrite1{
 		socket1: s,
 		refNum:  rn,
@@ -66,25 +66,28 @@ func newHdpWrite1(s *socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite1 {
 func newHdpRead2(s *socket, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead2 {
 	return &hdpRead2{
 		socket: s,
+		cid:    "hdpRead2-" + time.Now().Format("05.00000"),
 		refNum: rn,
 		tpt:    tpt,
 	}
 }
 
 // ===========================================================================
-func newHdpWrite2(s *socket, rn *[2]uint16) *hdpWrite2 {
+func newHdpWrite2(s *socket, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite2 {
 	return &hdpWrite2{
 		socket: s,
+		cid:    "hdpWrite2-" + time.Now().Format("05.00000"),
 		refNum: rn,
+		tpt:    tpt,
 	}
 }
 
 // ===========================================================================
 func NewHdpDialer() (*HdpDialer, error) {
-	cid := "hdpDialer-%s" + time.Now().Format("05.00000")
+	cid := "hdpDialer-" + time.Now().Format("05.00000")
 	d := &HdpDialer{
 		cid: cid,
-		tpt: dtype.MultiCh{},
+		tpt: dtype.MultiCh{make(chan dtype.HdpEvent, 1), make(chan dtype.HdpEvent, 1)},
 	}
 	return d.start()
 }
@@ -101,11 +104,11 @@ func NewHdpListener(network, address string) (*HdpListener, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.cid = "hdpListener-%s" + time.Now().Format("05.00000")
 	l := &HdpListener{
 		socket:         s,
+		cid:            "hdpListener-" + time.Now().Format("05.00000"),
 		connectTimeout: time.Duration(30) * time.Second,
-		tpt:            dtype.MultiCh{},
+		tpt:            dtype.MultiCh{make(chan dtype.HdpEvent, 1), make(chan dtype.HdpEvent, 1)},
 	}
 	return l.start()
 }

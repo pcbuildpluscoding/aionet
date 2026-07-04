@@ -16,7 +16,7 @@ import (
 // socket
 // ================================================================//
 type socket struct {
-	cid    string
+	// cid    string
 	fd     int
 	family int
 	laddr  net.Addr
@@ -24,30 +24,30 @@ type socket struct {
 }
 
 // ================================================================
-func (c *socket) init() error {
+func (c *socket) init(cid string) error {
 	flags := unix.EPOLLONESHOT | unix.EPOLLIN | unix.EPOLLOUT | unix.EPOLLET
-	return <-c.submitReq(unix.EPOLL_CTL_ADD, flags, EV_NULL)
+	return <-c.submitReq(cid, unix.EPOLL_CTL_ADD, flags, EV_NULL)
 }
 
 // ================================================================
-func (c *socket) submitReq(op int, flags int, mode ioMode) chan error {
+func (c *socket) submitReq(cid string, op int, flags int, mode ioMode) chan error {
 	return epoller.SubmitIoReq(newHdpEvent(":data",
 		"ioReq/op", op,
-		"reqRef/cid", c.cid,
+		"reqRef/cid", cid,
 		"reqRef/fd", c.fd,
 		"reqRef/flags", flags,
 		"reqRef/mode", int(mode)))
 }
 
 // ================================================================
-func (c *socket) close() error {
+func (c *socket) close(cid string) error {
 	var err error
 	select {
 	case <-time.After(time.Duration(2) * time.Second):
-		err = NewHdpError(ErrTimeout, c.cid)
-	case err = <-c.submitReq(unix.EPOLL_CTL_DEL, 0, EV_NULL):
+		err = NewHdpError(ErrTimeout, cid)
+	case err = <-c.submitReq(cid, unix.EPOLL_CTL_DEL, 0, EV_NULL):
 		if err != nil {
-			return NewHdpError(ErrOnClose, c.cid, err)
+			return NewHdpError(ErrOnClose, cid, err)
 		}
 	}
 	// c.state = Closed
@@ -77,13 +77,13 @@ func (c *socket) read(p []byte) (int, error) {
 }
 
 // ================================================================
-func (c *socket) onReadFrom(p []byte, rflags int) (int, net.Addr, error) {
+func (c *socket) onReadFrom(cid string, p []byte, rflags int) (int, net.Addr, error) {
 	// logger.Debugf("%s readFrom is requesting read-readiness ...", c.cid)
-	err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ)
+	err := <-c.submitReq(cid, unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ)
 	if err != nil {
 		return 0, nil, err
 	}
-	// logger.Debugf("%s readFrom got a read-ready event ...", c.cid)
+	logger.Debugf("%s onReadFrom got read-readiness ...", cid)
 	return c.readFrom(p, rflags)
 }
 
@@ -135,11 +135,11 @@ func (c *socket) write(p []byte) (int, error) {
 }
 
 // ================================================================
-func (c *socket) onWriteTo(p []byte, addr net.Addr) (int, error) {
+func (c *socket) onWriteTo(cid string, p []byte, addr net.Addr) (int, error) {
 	if addr == nil {
 		return 0, fmt.Errorf("addr is nil")
 	}
-	err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
+	err := <-c.submitReq(cid, unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
 	if err != nil {
 		return 0, err
 	}
@@ -166,9 +166,10 @@ func (c *socket) writeTo(p []byte, addr sockaddr) (int, error) {
 }
 
 // ================================================================
-func (s *socket) newSocket1() *socket1 {
-	return &socket1{
+func (s *socket) newSocket1(cid string) socket1 {
+	return socket1{
 		socket: s,
+		cid:    cid,
 	}
 }
 
@@ -230,9 +231,9 @@ func (s *socket1) setDeadline(mode int, dura time.Duration) chan error {
 }
 
 // ================================================================
-func (c *socket) verifyChecksum(b []byte, crc uint16) error {
+func (c *socket) verifyChecksum(cid string, b []byte, crc uint16) error {
 	if crc != crc16.Checksum(b, crc16.IBMTable) {
-		return fmt.Errorf("%s checksum verification failed", c.cid) // unix.ECONNABORTED
+		return fmt.Errorf("%s checksum verification failed", cid) // unix.ECONNABORTED
 	}
 	return nil
 }

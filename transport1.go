@@ -13,6 +13,7 @@ import (
 // ===========================================================================
 type hdpRead2 struct {
 	*socket
+	cid    string
 	refNum *[2]uint16
 	tpt    dtype.MultiCh
 }
@@ -123,6 +124,7 @@ func (c *hdpRead2) Start() dtype.HdpEvent {
 // ===========================================================================
 type hdpWrite2 struct {
 	*socket
+	cid    string
 	refNum *[2]uint16
 	tpt    dtype.MultiCh
 }
