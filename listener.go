@@ -1,6 +1,7 @@
 package aionet
 
 import (
+	"fmt"
 	"io"
 	"time"
 
@@ -9,9 +10,16 @@ import (
 )
 
 // ==================================================================//
-type HdpListener struct {
+type HdpListener0 struct {
 	*socket
 	cid            string
+	connectTimeout time.Duration
+	tpt            dtype.MultiCh
+}
+
+// ==================================================================//
+type HdpListener struct {
+	socket1
 	connectTimeout time.Duration
 	tpt            dtype.MultiCh
 }
@@ -49,6 +57,7 @@ func (c *HdpListener) onAccept() (*HdpConn, error) {
 	if ev.Err() != nil {
 		return nil, ev.Err()
 	}
+	logger.Debugf("####### got first returned event : %v", ev)
 	ev = <-c.tpt.SendEvent1(W, ev.With(dtype.HDP_CONNECT_ACK)).Sync()
 	if ev.Err() != nil {
 		return nil, ev.Err()
@@ -76,21 +85,41 @@ func (c *HdpListener) start0() (*HdpListener, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := newSocket("listen", unix.SOCK_DGRAM, 0, nil, nil)
+	s, err := newSocket0("listen", unix.SOCK_DGRAM, 0, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	readyCh := make(chan bool, 1)
 	refNum := [2]uint16{getRefNum(), 0}
 	cidR := "acceptRead1-" + time.Now().Format("05.00000")
-	s1 := s.newSocket1(cidR)
+	s1 := s.newSocket1(cidR, 16)
 	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
 	cidW := "acceptWrite1-" + time.Now().Format("05.00000")
-	s1 = s.newSocket1(cidW)
+	s1 = s.newSocket1(cidW, 16)
 	go newHdpWrite1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
 	return c, s.init(cidR + "|" + cidW)
+}
+
+// ================================================================
+func (c *HdpListener0) start1() (*HdpListener0, error) {
+	logger.Debugf("%s is starting ...", c.cid)
+	saddr, err := addrToSockaddr(c.laddr).sockaddr()
+	if err != nil {
+		return nil, err
+	}
+	err = unix.Bind(c.fd, saddr)
+	if err != nil {
+		return nil, fmt.Errorf("%s failed to bind to %s, error : %v", c.cid, c.laddr.String(), err)
+	}
+	readyCh := make(chan bool, 1)
+	refNum := [2]uint16{getRefNum(), 0}
+	cid := "acceptRead1-" + time.Now().Format("05.00000")
+	s1 := c.newSocket1(cid, 16)
+	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
+	<-readyCh
+	return c, c.init(c.cid + "|" + c.cid)
 }
 
 // ================================================================
@@ -99,8 +128,8 @@ func (c *HdpListener) start() (*HdpListener, error) {
 	readyCh := make(chan bool, 1)
 	refNum := [2]uint16{getRefNum(), 0}
 	cid := "acceptRead1-" + time.Now().Format("05.00000")
-	s1 := c.newSocket1(cid)
+	s1 := c.newSocket1(cid, 16)
 	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
-	return c, c.init(c.cid + "|" + c.cid)
+	return c, c.bind(c.cid + "|" + c.cid)
 }

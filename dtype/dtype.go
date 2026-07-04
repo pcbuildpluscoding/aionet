@@ -417,16 +417,16 @@ func (r HdpEvent) New(args ...any) HdpEvent {
 // Respond
 // ---------------------------------------------------------------//
 func (r HdpEvent) Respond(args ...any) {
-	res := HdpEvent{}
-	res.With(args...)
-	altCh := res.Ch("altCh")
+	// res := HdpEvent{}
+	// res.With(args...)
+	altCh := r.Ch("altCh")
 	ch := r.Ch()
 	// logger.Debugf("HdpEvent got caller result channel and altCh : %v, %v", ch, altCh)
 	if ch != nil {
-		ch <- res
+		ch <- r
 	} else if altCh != nil {
-		res.Delete("altCh")
-		altCh <- res
+		r.Delete("altCh")
+		altCh <- r
 	}
 }
 

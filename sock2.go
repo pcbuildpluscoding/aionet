@@ -22,7 +22,7 @@ type socket1 struct {
 }
 
 // ================================================================
-func (s *socket1) bind() error {
+func (s *socket1) bind(cid string) error {
 	switch addr := s.laddr.(type) {
 	case *net.UDPAddr:
 		// We provide a socket that listens to a wildcard
@@ -61,7 +61,7 @@ func (s *socket1) bind() error {
 	s.laddr = sockaddrToUDP(lsa)
 
 	logger.Debugf("%s is starting ...", s.cid)
-	err = s.init(s.cid)
+	err = s.init(cid)
 	logger.Debugf("%s is started.", s.cid)
 	return err
 }

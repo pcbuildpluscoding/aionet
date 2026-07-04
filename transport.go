@@ -2,6 +2,7 @@ package aionet
 
 import (
 	"encoding/binary"
+	"fmt"
 	"time"
 
 	"github.com/howeyc/crc16"
@@ -47,12 +48,12 @@ func (c *hdpRead1) onAccept(req dtype.HdpEvent) dtype.HdpEvent {
 	b := make([]byte, 14)
 	// read the serviceConn address
 	var err error
-	n, raddr, err := c.onReadFrom(c.cid, b, 0)
+	n, raddr, err := c.readFrom(b, 0)
 	if err != nil {
 		err = NewHdpError(ErrReadFromNewConn, c.cid, "onConnect", n, err)
 		return req.With(err)
 	}
-
+	logger.Debugf("%s got remote conn address : %s", c.cid, raddr.String())
 	err = c.newAcceptConn()
 	if err != nil {
 		return req.With(err)
@@ -72,20 +73,21 @@ func (c *hdpRead1) onAccept(req dtype.HdpEvent) dtype.HdpEvent {
 		err = NewHdpError(ErrUnexpectedReadFlag, c.cid, "onConnect", flag.String())
 		return req.With(err)
 	}
-
+	logger.Debugf("%s is returning remote addr : %s", c.cid, raddr.String())
 	return req.With(err, ":data", "raddr", raddr)
 }
 
 // ===========================================================================
 func (c *hdpRead1) newAcceptConn() error {
-	s, err := newSocket("listen", unix.SOCK_DGRAM, 0, nil, nil)
+	// s, err := newSocket0("listen", unix.SOCK_DGRAM, 0, nil, nil)
+	s, err := newSocket(nil, nil)
 	if err != nil {
 		return err
 	}
-	c.socket1 = s.newSocket1(c.cid)
+	c.socket1 = s.newSocket1(c.cid, 16)
 	readyCh := make(chan bool, 1)
 	cidW := "acceptWrite1-" + time.Now().Format("05.00000")
-	s1 := s.newSocket1(cidW)
+	s1 := s.newSocket1(cidW, 16)
 	go newHdpWrite1(s1, c.refNum, c.tpt).run(readyCh)
 	<-readyCh
 	return s.init(c.cid + "|" + cidW)
@@ -98,6 +100,7 @@ func (c *hdpRead1) onAcceptAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 	b := make([]byte, 14)
 	err := c.readHeader(b)
 	if err != nil {
+		logger.Debugf("%s got read error : %v", c.cid, err)
 		return req.With(err)
 	}
 
@@ -172,7 +175,7 @@ func (c *hdpRead1) onConnect(req dtype.HdpEvent) dtype.HdpEvent {
 // ===========================================================================
 func (c *hdpRead1) onConnectAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 	logger.Debugf("%s is reading peer connect acknowledgement ...", c.cid)
-	var wsize uint16
+	raddr := ""
 	err := func() error {
 		hdr := make([]byte, 14)
 		// logger.Debugf("%s parseHeader is running ...", c.cid)
@@ -181,16 +184,17 @@ func (c *hdpRead1) onConnectAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 			return err
 		}
 
-		refNum := binary.LittleEndian.Uint16(hdr[:2])
+		// refNum := binary.LittleEndian.Uint16(hdr[:2])
 
-		if c.refNum[0] != 0 && c.refNum[0] != refNum {
-			// reject the request and respond to the remotePeer
-			logger.Debugf("######## %s got wrong peer refnum : %d, %d", c.cid, c.refNum[0], refNum)
-			return NewHdpError(ErrCodeWrongPeerRefNum)
-		}
+		// if c.refNum[0] != 0 && c.refNum[0] != refNum {
+		// 	// reject the request and respond to the remotePeer
+		// 	logger.Debugf("######## %s got wrong peer refnum : %d, %d", c.cid, c.refNum[0], refNum)
+		// 	return NewHdpError(ErrCodeWrongPeerRefNum)
+		// }
 
 		err = verifyChecksum1(c.cid, hdr)
 		if err != nil {
+			logger.Errorf("%s checksum failed", c.cid)
 			return NewHdpError(ErrUnequalChecksum, c.cid, "parseHeader", err)
 		}
 
@@ -202,14 +206,23 @@ func (c *hdpRead1) onConnectAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 		}
 
 		c.refNum[1] = binary.LittleEndian.Uint16(hdr[:2])
-		logger.Debugf("####### %s onConnectAcknow setting readHDP.refNum from peer exchange : %d", c.cid, c.refNum)
+		logger.Debugf("####### %s onConnectAcknow setting readHDP.refNum from peer exchange : %v", c.cid, c.refNum)
 		// logger.Debugf("%s got new session refNum : %d", c.cid, c.refNum)
 
 		c.windowSize = binary.LittleEndian.Uint16(hdr[8:10])
-		logger.Debugf("%s got window size in state HDP_CONNECT_ACK : %d", c.cid, wsize)
-		return nil
+		logger.Debugf("%s got window size in state HDP_CONNECT_ACK : %d", c.cid, c.windowSize)
+
+		b := make([]byte, 2)
+		_, err = c.read(b)
+		size := binary.LittleEndian.Uint16(b)
+		logger.Debugf("got remote peer address length : %d", size)
+		b = make([]byte, size)
+		_, err = c.read(b)
+		raddr = string(b)
+		logger.Debugf("got remote peer address : %s", raddr)
+		return err
 	}()
-	return req.With(err)
+	return req.With(err, ":data", "raddr", raddr)
 }
 
 // ===========================================================================
@@ -363,7 +376,7 @@ func (c *hdpWrite1) handle(req dtype.HdpEvent) {
 
 // ===========================================================================
 func (c *hdpWrite1) acknowAccept(req dtype.HdpEvent) dtype.HdpEvent {
-	logger.Debugf("%s is acknowledging connected acceptance, local refNum : %d ...", c.cid, c.refNum)
+	logger.Debugf("%s is acknowledging connected acceptance, local refNum : %v ...", c.cid, c.refNum)
 
 	b := make([]byte, 14)
 	binary.LittleEndian.PutUint16(b[0:2], c.refNum[1])
@@ -373,15 +386,15 @@ func (c *hdpWrite1) acknowAccept(req dtype.HdpEvent) dtype.HdpEvent {
 	// set the local window size value
 
 	// binary.LittleEndian.PutUint16(b[10:12], c.wsize)
-	wsize := req.UInt16("windowSize")
+	// wsize := req.UInt16("windowSize")
 	// logger.Debugf("%s is sending window size in state HDP_ACCEPT_ACK : %d", c.cid, wsize)
-	binary.LittleEndian.PutUint16(b[8:10], wsize)
+	binary.LittleEndian.PutUint16(b[8:10], c.windowSize)
 
 	// calculate and insert the checksum
 	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
 
-	// logger.Debugf("%s is writing the header ...", c.cid)
-	err := c.writeHeader(b)
+	logger.Debugf("%s is writing the header to remote addr %s ...", c.cid, req.String("raddr"))
+	err := c.writeHeader(b, false)
 	return req.With(err)
 }
 
@@ -389,36 +402,53 @@ func (c *hdpWrite1) acknowAccept(req dtype.HdpEvent) dtype.HdpEvent {
 func (c *hdpWrite1) acknowConnect(req dtype.HdpEvent) dtype.HdpEvent {
 	logger.Debugf("%s is acknowledging connected peer ...", c.cid)
 
-	if req.Addr("raddr") == nil {
-		return req.Withf(500, "peer conn remote address is undefined")
-	}
-	logger.Debugf("%s is making a transport connection to remote address : %s ... ", c.cid, req.Addr("raddr").String())
-	dura := time.Duration(5) * time.Second
-	err := c.connect(&sockAddr{Addr: req.Addr("raddr")}, dura)
-	if err != nil {
-		err = NewHdpError(ErrConnectToNewConn, c.cid, "acknowConnect", err)
-		return req.With(err)
-	}
+	err := func() error {
+		if req.Addr("raddr") == nil {
+			logger.Errorf("peer conn remote address is undefined")
+			return fmt.Errorf("peer conn remote address is undefined")
+		}
+		logger.Debugf("%s is making a transport connection to remote address : %s ... ", c.cid, req.Addr("raddr").String())
+		dura := time.Duration(5) * time.Second
+		err := c.connect(&sockAddr{Addr: req.Addr("raddr")}, dura)
+		if err != nil {
+			return NewHdpError(ErrConnectToNewConn, c.cid, "acknowConnect", err)
+		}
+		logger.Debugf("%s got local address after connection : %v", c.cid, c.laddr.String())
 
-	// for an 18 hour session period
-	logger.Debugf("######### %s acknowConnect setting hdpWrite.refNum : %d", c.cid, c.refNum)
-	// logger.Debugf("%s refNum is created : %d", c.cid, c.refNum)
-	b := make([]byte, 14)
-	binary.LittleEndian.PutUint16(b[0:2], c.refNum[0])
+		// for an 18 hour session period
+		logger.Debugf("######### %s acknowConnect setting hdpWrite.refNum : %d", c.cid, c.refNum)
+		// logger.Debugf("%s refNum is created : %d", c.cid, c.refNum)
+		b := make([]byte, 14)
+		binary.LittleEndian.PutUint16(b[0:2], c.refNum[0])
 
-	// set the HDP_CONNECT_ACK flags
-	b[6] = byte(dtype.HDP_CONNECT_ACK)
+		// set the HDP_CONNECT_ACK flags
+		b[6] = byte(dtype.HDP_CONNECT_ACK)
 
-	// set the local window size value
-	wsize := req.UInt16("windowSize")
-	// logger.Debugf("%s is sending window size in state HDP_CONNECT_ACK : %d", c.cid, wsize)
-	binary.LittleEndian.PutUint16(b[8:10], wsize)
+		// set the local window size value
+		// wsize := req.UInt16("windowSize")
+		// logger.Debugf("%s is sending window size in state HDP_CONNECT_ACK : %d", c.cid, wsize)
+		binary.LittleEndian.PutUint16(b[8:10], c.windowSize)
 
-	// insert the checksum
-	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
+		// insert the checksum
+		binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
 
-	// logger.Debugf("%s hdpWrite is writing the acknowConnect header ...", c.cid)
-	return req.With(c.writeHeader(b))
+		// logger.Debugf("%s hdpWrite is writing the acknowConnect header ...", c.cid)
+		err = c.writeHeader(b, true)
+		if err != nil {
+			return err
+		}
+		size := uint16(len(c.laddr.String()))
+		logger.Debugf("%s is writing local address length : %d", c.cid, size)
+		b = make([]byte, 2)
+		binary.LittleEndian.PutUint16(b, size)
+		_, err = c.write(b)
+		if err != nil {
+			return err
+		}
+		_, err = c.write([]byte(c.laddr.String()))
+		return err
+	}()
+	return req.With(err)
 }
 
 // ===========================================================================
@@ -434,7 +464,7 @@ func (c *hdpWrite1) acknowOpen(req dtype.HdpEvent) dtype.HdpEvent {
 	// calculate and insert the checksum
 	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
 
-	err := c.writeHeader(b)
+	err := c.writeHeader(b, false)
 	logger.Debugf("%s hdpWrite remote connection is now open ...", c.cid)
 	return req.With(err)
 }
@@ -459,7 +489,7 @@ func (c *hdpWrite1) connectTo(req dtype.HdpEvent) dtype.HdpEvent {
 	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
 
 	// logger.Debugf("%s hdpWrite is writing the acknowConnect header ...", c.cid)
-	return req.With(c.writeHeader(b))
+	return req.With(c.writeHeader(b, false))
 }
 
 // ===========================================================================
@@ -533,16 +563,18 @@ func (c *hdpWrite1) write1(req dtype.HdpEvent) dtype.HdpEvent {
 	// logger.Debugf("%s is sending header with checksum : %d", c.cid, crc)
 	binary.LittleEndian.PutUint16(hdr[12:], crc16.Checksum(hdr, crc16.IBMTable))
 
-	return req.With(c.writeHeader(hdr))
+	return req.With(c.writeHeader(hdr, false))
 }
 
 // ---------------------------------------------------------------//
 // writeHeader
 // ---------------------------------------------------------------//
-func (c *hdpWrite1) writeHeader(b []byte) error {
-	err := <-c.submitReq(c.cid, unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
-	if err != nil {
-		return err
+func (c *hdpWrite1) writeHeader(b []byte, ioReady bool) error {
+	if !ioReady {
+		err := <-c.submitReq(c.cid, unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
+		if err != nil {
+			return err
+		}
 	}
 	for nn := 0; nn < len(b); {
 		n, err := c.write(b[nn:])
@@ -550,7 +582,7 @@ func (c *hdpWrite1) writeHeader(b []byte) error {
 			nn += n
 		}
 		if err != nil {
-			// logger.Errorf("%s write header error : %v", c.cid, err)
+			logger.Errorf("%s write header error : %v", c.cid, err)
 			return err
 		}
 	}

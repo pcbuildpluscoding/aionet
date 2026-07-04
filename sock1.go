@@ -166,10 +166,11 @@ func (c *socket) writeTo(p []byte, addr sockaddr) (int, error) {
 }
 
 // ================================================================
-func (s *socket) newSocket1(cid string) socket1 {
+func (s *socket) newSocket1(cid string, size uint16) socket1 {
 	return socket1{
-		socket: s,
-		cid:    cid,
+		socket:     s,
+		cid:        cid,
+		windowSize: size,
 	}
 }
 

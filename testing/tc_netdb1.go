@@ -12,7 +12,7 @@ import (
 func tc_netdb1(t *testing.T, params Result, args ...any) Result {
 	logger.Debugf("$$$$$$$$$$$ running tc_netdb1 $$$$$$$$$$$$")
 	err := func() error {
-		l, err := aio.NewHdpListener("udp", *hdpnetAddr)
+		l, err := aio.NewHdpListener("udp", *hdpnetAddr, 16)
 		if err != nil {
 			return err
 		}

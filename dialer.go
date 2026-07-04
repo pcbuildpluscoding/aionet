@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/pcbuildpluscoding/aionet/dtype"
-	"golang.org/x/sys/unix"
 )
 
 // =================================================================//
@@ -36,15 +35,15 @@ func (d *HdpDialer) Dial(network, address string) (*HdpConn, error) {
 	if ev.Err() != nil {
 		return nil, ev.Err()
 	}
-	ev = <-d.tpt.SendEvent1(R, newHdpEvent(dtype.HDP_CONNECT_ACK)).Sync()
+	ev = <-d.tpt.SendEvent1(R, ev.With(dtype.HDP_CONNECT_ACK)).Sync()
 	if ev.Err() != nil {
 		return nil, ev.Err()
 	}
-	ev = <-d.tpt.SendEvent1(W, newHdpEvent(dtype.HDP_ACCEPT_ACK)).Sync()
+	ev = <-d.tpt.SendEvent1(W, ev.With(dtype.HDP_ACCEPT_ACK)).Sync()
 	if ev.Err() != nil {
 		return nil, ev.Err()
 	}
-	ev = <-d.tpt.SendEvent1(R, newHdpEvent(dtype.HDP_CONNECTED)).Sync()
+	ev = <-d.tpt.SendEvent1(R, ev.With(dtype.HDP_CONNECTED)).Sync()
 	if ev.Err() != nil {
 		return nil, ev.Err()
 	}
@@ -60,18 +59,19 @@ func (d *HdpDialer) Dial(network, address string) (*HdpConn, error) {
 // ================================================================
 func (d *HdpDialer) start() (*HdpDialer, error) {
 	logger.Debugf("%s is starting ...", d.cid)
-	s, err := newSocket("dial", unix.SOCK_DGRAM, 0, nil, nil)
+	// s, err := newSocket0("dial", unix.SOCK_DGRAM, 0, nil, nil)
+	s, err := newSocket(nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	readyCh := make(chan bool, 1)
 	refNum := [2]uint16{getRefNum(), 0}
 	cidR := "dialRead1-" + time.Now().Format("05.00000")
-	s1 := s.newSocket1(cidR)
+	s1 := s.newSocket1(cidR, 16)
 	go newHdpRead1(s1, &refNum, d.tpt).run(readyCh)
 	<-readyCh
 	cidW := "dialWrite1-" + time.Now().Format("05.00000")
-	s1 = s.newSocket1(cidW)
+	s1 = s.newSocket1(cidW, 16)
 	go newHdpWrite1(s1, &refNum, d.tpt).run(readyCh)
 	<-readyCh
 	return d, s.init(cidR + "|" + cidW)

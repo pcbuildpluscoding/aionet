@@ -93,20 +93,41 @@ func NewHdpDialer() (*HdpDialer, error) {
 }
 
 // ===========================================================================
-func NewHdpListener(network, address string) (*HdpListener, error) {
+func NewHdpListener0(network, address string) (*HdpListener0, error) {
 	laddr, err := net.ResolveUDPAddr(network, address)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.Debugf("newHDPListener is calling newSocket ...")
-	s, err := newSocket("listen", unix.SOCK_DGRAM, 0, laddr, nil)
+	s, err := newSocket(laddr, nil)
 	if err != nil {
 		return nil, err
 	}
-	l := &HdpListener{
+	l := &HdpListener0{
 		socket:         s,
 		cid:            "hdpListener-" + time.Now().Format("05.00000"),
+		connectTimeout: time.Duration(30) * time.Second,
+		tpt:            dtype.MultiCh{make(chan dtype.HdpEvent, 1), make(chan dtype.HdpEvent, 1)},
+	}
+	return l.start1()
+}
+
+// ===========================================================================
+func NewHdpListener(network, address string, windowSize uint16) (*HdpListener, error) {
+	laddr, err := net.ResolveUDPAddr(network, address)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Debugf("newHDPListener is calling newSocket ...")
+	s, err := newSocket(laddr, nil)
+	if err != nil {
+		return nil, err
+	}
+	cid := "hdpListener-" + time.Now().Format("05.00000")
+	l := &HdpListener{
+		socket1:        s.newSocket1(cid, windowSize),
 		connectTimeout: time.Duration(30) * time.Second,
 		tpt:            dtype.MultiCh{make(chan dtype.HdpEvent, 1), make(chan dtype.HdpEvent, 1)},
 	}
@@ -114,7 +135,7 @@ func NewHdpListener(network, address string) (*HdpListener, error) {
 }
 
 // ===========================================================================
-func newSocket(mode string, sotype, proto int, laddr, raddr *net.UDPAddr) (*socket, error) {
+func newSocket0(mode string, sotype, proto int, laddr, raddr *net.UDPAddr) (*socket, error) {
 	laddr1 := &sockAddr{Addr: laddr}
 	family, ipv6only := favoriteAddrFamily(laddr1.Network(), laddr1, nil, mode)
 	fd, err := unix.Socket(family, sotype|unix.SOCK_NONBLOCK|unix.SOCK_CLOEXEC, proto)
@@ -127,6 +148,20 @@ func newSocket(mode string, sotype, proto int, laddr, raddr *net.UDPAddr) (*sock
 		laddr:  laddr,
 		raddr:  raddr,
 	}, setDefaultSockopts(fd, family, sotype, ipv6only)
+}
+
+// ===========================================================================
+func newSocket(laddr, raddr *net.UDPAddr) (*socket, error) {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_NONBLOCK, 0)
+	if err != nil {
+		return nil, os.NewSyscallError("socket", err)
+	}
+	return &socket{
+		fd:     fd,
+		family: unix.AF_INET,
+		laddr:  laddr,
+		raddr:  raddr,
+	}, nil
 }
 
 // ===========================================================================
