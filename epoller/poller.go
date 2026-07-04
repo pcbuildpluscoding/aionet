@@ -7,7 +7,6 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -269,7 +268,7 @@ func (p *epoller) deleteByFd(ref reqRef) error {
 		race.cancelDeadlines(ref.mode, err)
 	}
 	delete(p.race, ref.fd)
-	return syscall.Close(ref.fd)
+	return unix.Close(ref.fd)
 }
 
 // ==================================================================
@@ -376,17 +375,17 @@ func (p *epoller) handleReq(req ioReq) {
 	ref := req.ref
 	logger.Debugf("############ poller got cid, fd, op, flags, deadline : %s, %d, %d, %x, %s", ref.cid, ref.fd, req.op, ref.flags, ref.deadline.Format("02-15-04-05.000000"))
 	switch {
-	case req.op == syscall.EPOLL_CTL_DEL:
-		// don't need to call Epollctl(p.pfd, syscall.EPOLL_CTL_DEL ...) because according to the epoll7 document
+	case req.op == unix.EPOLL_CTL_DEL:
+		// don't need to call Epollctl(p.pfd, unix.EPOLL_CTL_DEL ...) because according to the epoll7 document
 		// the fd will be removed from the epoll interest list. CAVEAT : A file descriptor is removed from an interest
 		// list only after all the file descriptors referring to the underlying open file description have been closed
 		logger.Debugf("########## calling epoller.deleteByFd1(%d) for conn %s ##########", ref.fd, ref.cid)
 		err = p.deleteByFd(ref)
-		logger.Debugf("########## got syscall.Close(%d) error : %v", ref.fd, err)
-	case req.op == syscall.EPOLL_CTL_ADD:
+		logger.Debugf("########## got unix.Close(%d) error : %v", ref.fd, err)
+	case req.op == unix.EPOLL_CTL_ADD:
 		err = p.watch(ref)
 		// returnErr = true
-	case req.op == syscall.EPOLL_CTL_MOD:
+	case req.op == unix.EPOLL_CTL_MOD:
 		if ref.flags&PEV_RESET != 0 {
 			p.resetIoReady(req.ref)
 			break
@@ -396,7 +395,7 @@ func (p *epoller) handleReq(req ioReq) {
 			return
 		}
 		// logger.Debugf("epoller rearm err result : %v, flags : %d", err, ref.flags)
-	case req.op == syscall.EPOLLHUP:
+	case req.op == unix.EPOLLHUP:
 		logger.Debugf("%s io activity is cancelled !!", ref.cid)
 		err = p.cancelIo(req)
 	case req.op == 0:
@@ -445,7 +444,7 @@ func (p *epoller) others(req ioReq) error {
 func (p *epoller) putEventCount(ecount int) error {
 	ebuf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(ebuf, uint64(ecount))
-	_, err := syscall.Write(p.efd, ebuf)
+	_, err := unix.Write(p.efd, ebuf)
 	return err
 }
 
@@ -510,7 +509,7 @@ func (p *epoller) rearm(ref reqRef, ch chan error) error {
 	}
 	race.ch = ch
 	// next syscall is protected by the wait select loop
-	flags := syscall.EPOLLONESHOT | unix.EPOLLET
+	flags := unix.EPOLLONESHOT | unix.EPOLLET
 	flags |= ref.flags
 	err := unix.EpollCtl(p.pfd, unix.EPOLL_CTL_MOD, ref.fd,
 		&unix.EpollEvent{Fd: int32(ref.fd), Events: uint32(flags)})

@@ -51,7 +51,7 @@ func (d *HdpDialer) Dial(network, address string) (*HdpConn, error) {
 	d.tpt.SendEvent1(R, ev.With(dtype.HDP_OPEN1)).Async()
 	d.tpt.SendEvent1(W, ev.With(dtype.HDP_OPEN1)).Async()
 	return &HdpConn{
-		cid: "hdpConn-",
+		cid: "hdpConn-" + time.Now().Format("05.00000"),
 		tpt: d.tpt,
 	}, nil
 }

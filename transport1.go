@@ -2,7 +2,6 @@ package aionet
 
 import (
 	"io"
-	"syscall"
 	"time"
 
 	"github.com/pcbuildpluscoding/aionet/dtype"
@@ -105,23 +104,6 @@ func (c *hdpRead2) setDeadline(req dtype.HdpEvent) {
 }
 
 // ===========================================================================
-func (c *hdpRead2) Start() dtype.HdpEvent {
-	ev := newHdpEvent(":data",
-		"ioReq/op", unix.EPOLL_CTL_ADD,
-		"reqRef/cid", c.cid,
-		"reqRef/fd", c.fd,
-		"reqRef/flags", syscall.EPOLLONESHOT|syscall.EPOLLIN|unix.EPOLLET,
-		"reqRef/mode", int(EV_READ),
-	)
-	err := <-epoller.SubmitIoReq(ev)
-	if err != nil {
-		return ev.Withf(500, "epoller watch request failed : %v", err)
-	}
-	go c.run()
-	return ev
-}
-
-// ===========================================================================
 type hdpWrite2 struct {
 	*socket
 	cid    string
@@ -174,23 +156,6 @@ func (c *hdpWrite2) setDeadline(req dtype.HdpEvent) {
 		"reqRef/flags", int(epoller.PEV_WRITE),
 		"reqRef/deadline", req.Value("deadline")))
 	req.Ch() <- req.With(err)
-}
-
-// ===========================================================================
-func (c *hdpWrite2) Start() dtype.HdpEvent {
-	ev := newHdpEvent(":data",
-		"ioReq/op", unix.EPOLL_CTL_ADD,
-		"reqRef/cid", c.cid,
-		"reqRef/fd", c.fd,
-		"reqRef/flags", syscall.EPOLLONESHOT|syscall.EPOLLOUT|unix.EPOLLET,
-		"reqRef/mode", int(EV_WRITE),
-	)
-	err := <-epoller.SubmitIoReq(ev)
-	if err != nil {
-		return ev.Withf(500, "epoller watch request failed : %v", err)
-	}
-	go c.run()
-	return ev
 }
 
 // ===========================================================================
