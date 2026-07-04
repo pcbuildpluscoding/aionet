@@ -69,7 +69,7 @@ func (c *HdpListener) onAccept() (*HdpConn, error) {
 }
 
 // ================================================================
-func (c *HdpListener) start() *HdpListener {
+func (c *HdpListener) start() (*HdpListener, error) {
 	logger.Debugf("%s is starting ...", c.cid)
 	readyCh := make(chan bool, 1)
 	refNum := [2]uint16{getRefNum(), 0}
@@ -78,5 +78,5 @@ func (c *HdpListener) start() *HdpListener {
 	<-readyCh
 	go newHdpWrite1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
-	return c
+	return c, c.init()
 }

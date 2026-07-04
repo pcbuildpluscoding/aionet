@@ -9,6 +9,7 @@ import (
 
 	"github.com/howeyc/crc16"
 	"github.com/pcbuildpluscoding/aionet/dtype"
+	"github.com/pcbuildpluscoding/aionet/epoller"
 	"github.com/pcbuildpluscoding/logroll"
 	"golang.org/x/sys/unix"
 )
@@ -79,12 +80,13 @@ func newHdpWrite2(s *socket, rn *[2]uint16) *hdpWrite2 {
 }
 
 // ===========================================================================
-func NewHdpDialer() *HdpDialer {
+func NewHdpDialer() (*HdpDialer, error) {
 	cid := "hdpDialer-%s" + time.Now().Format("05.00000")
-	return &HdpDialer{
+	d := &HdpDialer{
 		cid: cid,
 		tpt: dtype.MultiCh{},
 	}
+	return d.start()
 }
 
 // ===========================================================================
@@ -105,7 +107,7 @@ func NewHdpListener(network, address string) (*HdpListener, error) {
 		connectTimeout: time.Duration(30) * time.Second,
 		tpt:            dtype.MultiCh{},
 	}
-	return l.start(), s.init()
+	return l.start()
 }
 
 // ===========================================================================
@@ -135,4 +137,22 @@ func verifyChecksum1(cid string, b []byte) error {
 		return fmt.Errorf("%s checksum verification failed", cid) // unix.ECONNABORTED
 	}
 	return nil
+}
+
+// ===========================================================================
+func waitIoReady(cid string, fd int, mode ioMode) chan error {
+	var flag int
+	switch mode {
+	case EV_READ:
+		flag = unix.EPOLLIN
+	case EV_WRITE:
+		flag = unix.EPOLLOUT
+	}
+	ev := newHdpEvent(":data",
+		"ioReq/op", unix.EPOLL_CTL_MOD,
+		"reqRef/cid", cid,
+		"reqRef/fd", fd,
+		"reqRef/flags", flag,
+		"reqRef/mode", int(mode))
+	return epoller.SubmitIoReq(ev)
 }

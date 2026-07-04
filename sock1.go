@@ -32,6 +32,7 @@ func (c *socket) init() error {
 // ================================================================
 func (c *socket) submitReq(op int, flags int, mode ioMode) chan error {
 	return epoller.SubmitIoReq(newHdpEvent(":data",
+		"ioReq/op", op,
 		"reqRef/cid", c.cid,
 		"reqRef/fd", c.fd,
 		"reqRef/flags", flags,

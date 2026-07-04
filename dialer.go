@@ -4,6 +4,7 @@ import (
 	"net"
 
 	"github.com/pcbuildpluscoding/aionet/dtype"
+	"golang.org/x/sys/unix"
 )
 
 // =================================================================//
@@ -53,4 +54,25 @@ func (d *HdpDialer) Dial(network, address string) (*HdpConn, error) {
 		cid: "hdpConn-",
 		tpt: d.tpt,
 	}, nil
+}
+
+// ================================================================
+func (d *HdpDialer) start() (*HdpDialer, error) {
+	logger.Debugf("%s is starting ...", d.cid)
+	s, err := newSocket("dial", unix.SOCK_DGRAM, 0, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	err = s.init()
+	if err != nil {
+		return nil, err
+	}
+	s1 := s.newSocket1()
+	readyCh := make(chan bool, 1)
+	refNum := [2]uint16{getRefNum(), 0}
+	go newHdpRead1(s1, &refNum, d.tpt).run(readyCh)
+	<-readyCh
+	go newHdpWrite1(s1, &refNum, d.tpt).run(readyCh)
+	<-readyCh
+	return d, nil
 }
