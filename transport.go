@@ -41,7 +41,7 @@ func (c *hdpRead1) handle(req dtype.HdpEvent) {
 }
 
 // ===========================================================================
-func (c *hdpRead1) onAccept(res dtype.HdpEvent) dtype.HdpEvent {
+func (c *hdpRead1) onAccept(req dtype.HdpEvent) dtype.HdpEvent {
 	logger.Debugf("%s is reading initial client connection  ...", c.cid)
 	// read accept acknowledgement
 	b := make([]byte, 14)
@@ -50,14 +50,19 @@ func (c *hdpRead1) onAccept(res dtype.HdpEvent) dtype.HdpEvent {
 	n, raddr, err := c.onReadFrom(c.cid, b, 0)
 	if err != nil {
 		err = NewHdpError(ErrReadFromNewConn, c.cid, "onConnect", n, err)
-		return res.With(err)
+		return req.With(err)
+	}
+
+	err = c.newAcceptConn()
+	if err != nil {
+		return req.With(err)
 	}
 
 	// verify checksum
 	err = verifyChecksum1(c.cid, b)
 	if err != nil {
 		err = NewHdpError(ErrUnequalChecksum, c.cid, "onConnect", err)
-		return res.With(err)
+		return req.With(err)
 	}
 
 	flag := dtype.HDP_STATE1(b[6])
@@ -65,10 +70,25 @@ func (c *hdpRead1) onAccept(res dtype.HdpEvent) dtype.HdpEvent {
 	if flag != dtype.HDP_CONNECT {
 		// TODO - report the error to remotePeer
 		err = NewHdpError(ErrUnexpectedReadFlag, c.cid, "onConnect", flag.String())
-		return res.With(err)
+		return req.With(err)
 	}
 
-	return res.With(err, ":data", "raddr", raddr)
+	return req.With(err, ":data", "raddr", raddr)
+}
+
+// ===========================================================================
+func (c *hdpRead1) newAcceptConn() error {
+	s, err := newSocket("listen", unix.SOCK_DGRAM, 0, nil, nil)
+	if err != nil {
+		return err
+	}
+	c.socket1 = s.newSocket1(c.cid)
+	readyCh := make(chan bool, 1)
+	cidW := "acceptWrite1-" + time.Now().Format("05.00000")
+	s1 := s.newSocket1(cidW)
+	go newHdpWrite1(s1, c.refNum, c.tpt).run(readyCh)
+	<-readyCh
+	return s.init(c.cid + "|" + cidW)
 }
 
 // ===========================================================================

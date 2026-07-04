@@ -310,9 +310,9 @@ func (p *epoller) handleIoError(ev ioEvent) {
 // ==================================================================
 func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 	// all events are handled as a oneshot event, so remove it from storage
-	logger.Debugf("@@@@@@@@@@@@@@ epoller got io-ready events : %d", pev.Events)
 	key := int(pev.Fd)
 	race := p.race[key]
+	logger.Debugf("@@@@@@@@@@@@@@ got io-ready events : %d for %s,%s", pev.Events, race[R].cid, race[W].cid)
 	rearmed := false
 	switch {
 	case race == [2]*ioRace{}:

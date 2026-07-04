@@ -70,7 +70,7 @@ func (c *HdpListener) onAccept() (*HdpConn, error) {
 }
 
 // ================================================================
-func (c *HdpListener) start() (*HdpListener, error) {
+func (c *HdpListener) start0() (*HdpListener, error) {
 	logger.Debugf("%s is starting ...", c.cid)
 	err := c.init(c.cid + "|" + c.cid)
 	if err != nil {
@@ -91,4 +91,16 @@ func (c *HdpListener) start() (*HdpListener, error) {
 	go newHdpWrite1(s1, &refNum, c.tpt).run(readyCh)
 	<-readyCh
 	return c, s.init(cidR + "|" + cidW)
+}
+
+// ================================================================
+func (c *HdpListener) start() (*HdpListener, error) {
+	logger.Debugf("%s is starting ...", c.cid)
+	readyCh := make(chan bool, 1)
+	refNum := [2]uint16{getRefNum(), 0}
+	cid := "acceptRead1-" + time.Now().Format("05.00000")
+	s1 := c.newSocket1(cid)
+	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
+	<-readyCh
+	return c, c.init(c.cid + "|" + c.cid)
 }
