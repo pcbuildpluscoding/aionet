@@ -1,9 +1,8 @@
 package aionet
 
 import (
-	"time"
+	"net"
 
-	"github.com/google/uuid"
 	"github.com/pcbuildpluscoding/aionet/dtype"
 )
 
@@ -12,21 +11,46 @@ import (
 // =================================================================//
 type HdpDialer struct {
 	cid string
+	tpt dtype.MultiCh
 }
 
 // ==================================================================
-func (d *HdpDialer) ConnId() string {
+func (d *HdpDialer) Cid() string {
 	return d.cid
 }
 
 // ==================================================================
-func (d *HdpDialer) Dial(req dtype.HdpEvent) (*HdpConn, error) {
+func (d *HdpDialer) Dial(network, addr string) (*HdpConn, error) {
 	logger.Debugf("%s is connecting to HdpListener ...", d.cid)
 
-	d.cid = "hdpDialer-" + time.Now().Format("05.00000")
-	hdpconn := NewHdpConn(dtype.HDP_DIAL)
-	pipeName := uuid.New().String()
+	raddr, err := net.ResolveUDPAddr(network, addr)
+	if err != nil {
+		return nil, err
+	}
 
-	err := hdpconn.Start(pipeName, req.With(dtype.HDP_CONNECT, ":data", "init/dial/pipename", pipeName))
-	return hdpconn, err
+	ev := <-d.tpt.SendEvent1(W, newHdpEvent(dtype.HDP_CONNECT, ":data",
+		"windowSize", 16,
+		"raddr", raddr)).Sync()
+	if ev.Err() != nil {
+		return nil, ev.Err()
+	}
+	ev = <-d.tpt.SendEvent1(R, newHdpEvent(dtype.HDP_CONNECT_ACK)).Sync()
+	if ev.Err() != nil {
+		return nil, ev.Err()
+	}
+	ev = <-d.tpt.SendEvent1(W, newHdpEvent(dtype.HDP_ACCEPT_ACK)).Sync()
+	if ev.Err() != nil {
+		return nil, ev.Err()
+	}
+	ev = <-d.tpt.SendEvent1(R, newHdpEvent(dtype.HDP_CONNECTED)).Sync()
+	if ev.Err() != nil {
+		return nil, ev.Err()
+	}
+
+	d.tpt.SendEvent1(R, ev.With(dtype.HDP_OPEN1)).Async()
+	d.tpt.SendEvent1(W, ev.With(dtype.HDP_OPEN1)).Async()
+	return &HdpConn{
+		cid: "hdpConn-",
+		tpt: d.tpt,
+	}, nil
 }

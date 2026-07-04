@@ -1,7 +1,6 @@
 package aionet
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/pcbuildpluscoding/aionet/dtype"
@@ -10,7 +9,6 @@ import (
 // ===========================================================================
 type HdpConn struct {
 	cid    string
-	kind   dtype.HDP_STATE1
 	state  [2]dtype.HDP_STATE2
 	statet Statet
 	tpt    dtype.MultiCh
@@ -82,26 +80,8 @@ func (c *HdpConn) SetWriteDeadline(dl time.Time) error {
 }
 
 // ===========================================================================
-func (c *HdpConn) Start(pipeName string, ev dtype.HdpEvent) error {
-
-	logger.Debugf("$$$$$$$$$$$$$ %s got starting event : %v", c.cid, ev)
-	c.tpt[R] <- ev
-	switch c.kind {
-	case dtype.HDP_ACCEPT:
-		go NewInitAcceptRead(pipeName, c.tpt).Run()
-		go NewInitAcceptWrite(pipeName, c.tpt).Run()
-	case dtype.HDP_DIAL:
-		go NewInitDialRead(pipeName, c.tpt).Run()
-		go NewInitDialWrite(pipeName, c.tpt).Run()
-	}
-
-	select {
-	case err := <-c.start():
-		return err
-	case <-time.After(10 * time.Second):
-		return fmt.Errorf("%s starting timedout", c.cid)
-	}
-}
+// func (c *HdpConn) Start(pipeName string, ev dtype.HdpEvent) error {
+// }
 
 // ===========================================================================
 func (c *HdpConn) start() chan error {

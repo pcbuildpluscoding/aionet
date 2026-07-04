@@ -54,21 +54,6 @@ func (c *socket) close() error {
 }
 
 // ================================================================
-func (c *socket) onRead(p []byte) (int, error) {
-	if c == nil {
-		return 0, unix.EINVAL
-	} else if len(p) == 0 {
-		return 0, nil
-	}
-	// logger.Debugf("%s is wanting read readiness ...", c.cid)
-	err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLIN, EV_READ)
-	if err != nil {
-		return 0, err
-	}
-	return c.read(p)
-}
-
-// ================================================================
 // read - is actually a one-shot read, the loop is just for handling
 // the appearance of unix.EINTR error
 // ================================================================
@@ -119,16 +104,6 @@ func (c *socket) readFrom(p []byte, flags int) (int, net.Addr, error) {
 		}
 		return nn, sockaddrToUDP(sa), err
 	}
-}
-
-// ================================================================
-func (c *socket) onWrite(p []byte) (int, error) {
-	// logger.Debugf("%s is wanting write readiness ...", c.cid)
-	err := <-c.submitReq(unix.EPOLL_CTL_MOD, unix.EPOLLOUT, EV_WRITE)
-	if err != nil {
-		return 0, err
-	}
-	return c.write(p)
 }
 
 // ================================================================
@@ -190,12 +165,9 @@ func (c *socket) writeTo(p []byte, addr sockaddr) (int, error) {
 }
 
 // ================================================================
-func (s *socket1) newSocket2(timeout uint16) *socket2 {
-	return &socket2{
-		socket:         s.socket,
-		resultCh:       make(chan dtype.HdpEvent, 1),
-		defaultTimeout: timeout,
-		tpt:            dtype.MultiCh{},
+func (s *socket) newSocket1() *socket1 {
+	return &socket1{
+		socket: s,
 	}
 }
 
@@ -209,18 +181,15 @@ func (s *socket1) sendReadReq(dura time.Duration, data ...any) dtype.HdpEvent {
 func (s *socket1) sendReadReq1(dura time.Duration, req dtype.HdpEvent) dtype.HdpEvent {
 	readyCh := make(chan bool, 1)
 	go func() {
-		if s.state[1] == dtype.HDP_CLOSED1 && req.Flag1() != dtype.HDP_CLOSED1 {
-			req.Respond(fmt.Errorf("conn is closed."))
-			return
-		} else if dura != 0 {
-			err := <-s.setDeadline(int(epoller.PEV_READ), dura)
+		if dura != 0 {
+			err := <-s.setDeadline(int(unix.EPOLLIN), dura)
 			if err != nil {
 				req.Respond(err)
 				return
 			}
 		}
 		<-readyCh
-		s.tpt[R] <- req
+		// s.tpt[R] <- req
 	}()
 	req["readyCh"] = readyCh
 	return req
@@ -236,18 +205,15 @@ func (s *socket1) sendWriteReq(dura time.Duration, data ...any) dtype.HdpEvent {
 func (s *socket1) sendWriteReq1(dura time.Duration, req dtype.HdpEvent) dtype.HdpEvent {
 	readyCh := make(chan bool, 1)
 	go func() {
-		if s.state[1] == dtype.HDP_CLOSED1 && req.Flag1() != dtype.HDP_CLOSED1 {
-			req.Respond(fmt.Errorf("conn is closed."))
-			return
-		} else if dura != 0 {
-			err := <-s.setDeadline(int(epoller.PEV_WRITE), dura)
+		if dura != 0 {
+			err := <-s.setDeadline(int(unix.EPOLLOUT), dura)
 			if err != nil {
 				req.Respond(err)
 				return
 			}
 		}
 		<-readyCh
-		s.tpt[W] <- req
+		// s.tpt[W] <- req
 	}()
 	req["readyCh"] = readyCh
 	return req

@@ -1,7 +1,5 @@
 package aionet
 
-import "time"
-
 const (
 	R = 0
 	W = 1
@@ -55,7 +53,6 @@ var (
 	maxEvents = 4096
 	minEvents = 64
 
-	zeroTime               = time.Time{}
 	ErrCodeWrongPeerRefNum = 1
 	ErrReadFromNewConn     = 2
 	ErrUnequalChecksum     = 3

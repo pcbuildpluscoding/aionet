@@ -15,12 +15,10 @@ import (
 // ================================================================//
 type socket1 struct {
 	*socket
-	mode       uint16
-	resCh      chan dtype.HdpEvent
-	state      [2]dtype.HDP_STATE1
+	// state      [2]dtype.HDP_STATE1
 	windowSize uint16
 	suspended  bool
-	tpt        dtype.MultiCh
+	// tpt        dtype.MultiCh
 }
 
 // ================================================================
@@ -172,20 +170,8 @@ func (c *socket1) connectToPeer(raddr sockaddr, errCh chan error) {
 	errCh <- unix.Connect(c.fd, rsa)
 }
 
-// ================================================================
-func (c *socket1) start(frule tpt.FlowRule) error {
-	logger.Debugf("%s is starting ...", c.cid)
-	readyCh := make(chan bool, 1)
-	refNum := [2]uint16{getRefNum(), 0}
-	go newReader1(c, &refNum).run(readyCh)
-	<-readyCh
-	go newWriter1(c, &refNum).run(readyCh)
-	<-readyCh
-	return nil
-}
-
 // ================================================================//
-// socket
+// socket2
 // ================================================================//
 type socket2 struct {
 	*socket
