@@ -3,6 +3,7 @@ package aionet
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/howeyc/crc16"
@@ -378,23 +379,36 @@ func (c *hdpWrite1) handle(req dtype.HdpEvent) {
 func (c *hdpWrite1) acknowAccept(req dtype.HdpEvent) dtype.HdpEvent {
 	logger.Debugf("%s is acknowledging connected acceptance, local refNum : %v ...", c.cid, c.refNum)
 
-	b := make([]byte, 14)
-	binary.LittleEndian.PutUint16(b[0:2], c.refNum[1])
-	binary.LittleEndian.PutUint16(b[2:4], c.refNum[0])
+	err := func() error {
+		b := make([]byte, 14)
+		binary.LittleEndian.PutUint16(b[0:2], c.refNum[1])
+		binary.LittleEndian.PutUint16(b[2:4], c.refNum[0])
 
-	b[6] = byte(dtype.HDP_ACCEPT_ACK)
-	// set the local window size value
+		b[6] = byte(dtype.HDP_ACCEPT_ACK)
+		// set the local window size value
 
-	// binary.LittleEndian.PutUint16(b[10:12], c.wsize)
-	// wsize := req.UInt16("windowSize")
-	// logger.Debugf("%s is sending window size in state HDP_ACCEPT_ACK : %d", c.cid, wsize)
-	binary.LittleEndian.PutUint16(b[8:10], c.windowSize)
+		// binary.LittleEndian.PutUint16(b[10:12], c.wsize)
+		// wsize := req.UInt16("windowSize")
+		// logger.Debugf("%s is sending window size in state HDP_ACCEPT_ACK : %d", c.cid, wsize)
+		binary.LittleEndian.PutUint16(b[8:10], c.windowSize)
 
-	// calculate and insert the checksum
-	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
+		// calculate and insert the checksum
+		binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
 
-	logger.Debugf("%s is writing the header to remote addr %s ...", c.cid, req.String("raddr"))
-	err := c.writeHeader(b, false)
+		logger.Debugf("%s is writing the header to remote addr %s ...", c.cid, req.String("raddr"))
+		raddr, err := net.ResolveUDPAddr("udp", req.String("raddr"))
+		if err != nil {
+			return err
+		}
+		dura := time.Duration(5) * time.Second
+		err = c.connect(&sockAddr{Addr: raddr}, dura)
+		if err != nil {
+			logger.Errorf("remote connection attempt failed")
+			return NewHdpError(ErrConnectToNewConn, c.cid, "acknowConnect", err)
+		}
+		return c.writeHeader(b, false)
+	}()
+	logger.Debugf("%s acknowAccept wrote header ok", c.cid)
 	return req.With(err)
 }
 
