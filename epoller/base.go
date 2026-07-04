@@ -102,10 +102,10 @@ func newIoEvent(ref reqRef, dlRef uint16, pev ...unix.EpollEvent) ioEvent {
 }
 
 // ===========================================================================
-func newIoRace(ref reqRef) *ioRace {
+func newIoRace(cid string, mode ioMode) *ioRace {
 	return &ioRace{
-		cid:    ref.cid,
-		mode:   ref.mode,
+		cid:    cid,
+		mode:   mode,
 		doneCh: map[uint16]chan error{},
 	}
 }

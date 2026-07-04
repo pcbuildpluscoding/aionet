@@ -218,7 +218,7 @@ type epoller struct {
 	pfd   int // epoll fd
 
 	eventCh chan ioEvent
-	race    map[int]*ioRace
+	race    map[int][2]*ioRace
 	running bool
 }
 
@@ -226,17 +226,16 @@ type epoller struct {
 func (p *epoller) cancelIo(req ioReq) error {
 	ref := req.ref
 	logger.Debugf("############# cancelIO is cancelling %s %s request", ref.cid, ref.mode.String())
-	key, err := p.getFdKey(ref)
-	if err != nil {
-		logger.Debugf("%s has a persisting ioRace error : %v", ref.cid, err)
-		return err
-	}
-	race := p.race[key]
+	race := p.getIoRace(ref)
 	if race == nil {
-		return fmt.Errorf("%s ioRace record not found for fd : %d", ref.cid, ref.fd)
+		return fmt.Errorf("%s %s ioRace is undefined", ref.cid, ref.mode.String())
+	}
+	if race.err != nil {
+		logger.Debugf("%s has a persisting ioRace error : %v", ref.cid, race.err)
+		return race.err
 	}
 	logger.Debugf("@@@@@@@@@@@@ cancelIO is cancelling %s %s request", race.cid, ref.mode.String())
-	race.cancelDeadlines(ref.mode, err)
+	race.cancelDeadlines(ref.mode, nil)
 	return nil
 }
 
@@ -264,7 +263,7 @@ func (p *epoller) Close() error {
 // ==================================================================
 func (p *epoller) deleteByFd(ref reqRef) error {
 	err := NewHdpError(ErrClosed, ref.cid)
-	race := p.race[ref.fd]
+	race := p.getIoRace(ref)
 	if race != nil {
 		race.cancelDeadlines(ref.mode, err)
 	}
@@ -280,24 +279,16 @@ func (p *epoller) getEventCount() error {
 }
 
 // ==================================================================
-func (p *epoller) getFdKey(ref reqRef) (int, error) {
+func (p *epoller) getIoRace(ref reqRef) *ioRace {
 	race := p.race[ref.fd]
-	if race != nil {
-		return ref.fd, race.err
+	i := R
+	if ref.mode == EV_WRITE {
+		i = W
 	}
-	return ref.fd, nil
-}
-
-// ==================================================================
-func (p *epoller) getIoRace(ref reqRef) (int, *ioRace) {
-	race := p.race[ref.fd]
-	if race == nil {
-		race = &ioRace{
-			cid:    ref.cid,
-			doneCh: map[uint16]chan error{},
-		}
+	if race[i] == nil {
+		return nil
 	}
-	return ref.fd, race
+	return race[i]
 }
 
 // ==================================================================
@@ -307,8 +298,8 @@ func (p *epoller) handleIoError(ev ioEvent) {
 			p.handleTimeout(pev, ev)
 		}
 	} else if len(ev.pev) > 0 {
-		key := int(ev.pev[0].Fd)
-		race := p.race[key]
+		ref := ev.req.ref
+		race := p.getIoRace(ref)
 		if race != nil {
 			logger.Debugf("%s got non-timeout io error : %v", race.cid, ev.err)
 		}
@@ -321,40 +312,50 @@ func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 	key := int(pev.Fd)
 	race := p.race[key]
 	switch {
-	case race == nil:
+	case race[R] == nil:
 		logger.Errorf("fd[%d] EV_READ ioRace does not exist for events, error : %x, %v", pev.Fd, pev.Events, ev.err)
 	case pev.Events&PEV_ERROR != 0:
-		logger.Debugf("%s got EV_ERROR ...", race.cid)
+		logger.Debugf("%s got EV_ERROR ...", race[R].cid)
 		return
-	case pev.Events&PEV_READ != 0 && race.mode == EV_READ:
-		if race.ch != nil {
-			logger.Debugf("%s is returning read-readiness ...", race.cid)
-			race.timedAt = ev.timedAt
-			race.doIoReady(EV_READ)
+	case pev.Events&PEV_READ != 0:
+		if race[R].ch != nil {
+			logger.Debugf("%s is returning read-readiness ...", race[R].cid)
+			race[R].timedAt = ev.timedAt
+			race[R].doIoReady(EV_READ)
 		} else {
-			logger.Debugf("%s is read-ready ...", race.cid)
-			race.ready = true
+			logger.Debugf("%s is read-ready ...", race[R].cid)
+			race[R].ready = true
 		}
-		race.armed = false
-	case pev.Events&PEV_WRITE != 0 && race.mode == EV_WRITE:
-		if race.ch != nil {
-			logger.Debugf("%s is returning write-readiness ...", race.cid)
-			race.timedAt = ev.timedAt
-			race.doIoReady(EV_WRITE)
+		race[R].armed = false
+	case pev.Events&PEV_WRITE != 0:
+		if race[W].ch != nil {
+			logger.Debugf("%s is returning write-readiness ...", race[W].cid)
+			race[W].timedAt = ev.timedAt
+			race[W].doIoReady(EV_WRITE)
 		} else {
-			logger.Debugf("%s is write-ready ...", race.cid)
-			race.ready = true
+			logger.Debugf("%s is write-ready ...", race[W].cid)
+			race[W].ready = true
 		}
-		race.armed = false
-	case race.ch != nil:
+		race[W].armed = false
+	default:
 		// bug-fix : confirm that a read-ready request exists for this fd
 		// rearm registered read event, otherwise epoller effectively deletes the previous read-ready state
-		err := p.rearm1(reqRef{
-			fd:   int(pev.Fd),
-			mode: race.mode,
-		})
-		race.armed = true
-		logger.Debugf("%s %s readiness polling is rearmed : %v ...", race.cid, race.mode.String(), err)
+		if race[R].ch != nil {
+			err := p.rearm1(reqRef{
+				fd:   int(pev.Fd),
+				mode: race[R].mode,
+			})
+			race[R].armed = true
+			logger.Debugf("%s %s readiness polling is rearmed : %v ...", race[R].cid, race[R].mode.String(), err)
+		}
+		if race[W].ch != nil {
+			err := p.rearm1(reqRef{
+				fd:   int(pev.Fd),
+				mode: race[W].mode,
+			})
+			race[W].armed = true
+			logger.Debugf("%s %s readiness polling is rearmed : %v ...", race[W].cid, race[W].mode.String(), err)
+		}
 	}
 }
 
@@ -407,20 +408,18 @@ func (p *epoller) handleTimeout(pev unix.EpollEvent, ev ioEvent) {
 
 	logger.Debugf("epoller is handling an io-timeout event ...")
 	key := int(pev.Fd)
-	race := p.race[key]
+	ref := ev.req.ref
+	race := p.getIoRace(ref)
 	switch {
 	case race == nil:
 		logger.Errorf("fd[%d] ioRace does not exist. error : %v", key, ev.err)
-	case race.ch != nil:
-		switch race.mode {
-		case EV_READ:
-			if pev.Events&PEV_READ != 0 {
-				race.doIoTimeout(EV_READ, ev)
-			}
-		case EV_WRITE:
-			if pev.Events&PEV_WRITE != 0 {
-				race.doIoTimeout(EV_WRITE, ev)
-			}
+	case ref.mode == EV_READ:
+		if pev.Events&PEV_READ != 0 {
+			race.doIoTimeout(EV_READ, ev)
+		}
+	case ref.mode == EV_WRITE:
+		if pev.Events&PEV_WRITE != 0 {
+			race.doIoTimeout(EV_WRITE, ev)
 		}
 	}
 }
@@ -444,7 +443,7 @@ func (p *epoller) putEventCount(ecount int) error {
 // ==================================================================
 func (p *epoller) raceDeadline(ref reqRef) error {
 	logger.Debugf("%s is adding a new deadline racer ...", ref.cid)
-	race := p.race[ref.fd]
+	race := p.getIoRace(ref)
 	if race == nil {
 		return fmt.Errorf("%s ioRace is undefined", ref.cid)
 	}
@@ -456,7 +455,6 @@ func (p *epoller) raceDeadline(ref reqRef) error {
 	race.timedAt = zeroTime
 	dlRef, doneCh := race.newDoneCh()
 	logger.Debugf("%s got new ioRace and doneCh, ref.flags, deadline ref : %d, %d", ref.cid, ref.flags, dlRef)
-	p.race[ref.fd] = race
 	event := newIoEvent(ref, dlRef, unix.EpollEvent{
 		Events: uint32(ref.flags),
 		Fd:     int32(ref.fd),
@@ -487,7 +485,7 @@ func (p *epoller) raceDeadline1(ref reqRef, event ioEvent, doneCh chan error) fu
 
 // ==================================================================
 func (p *epoller) rearm(ref reqRef, ch chan error) error {
-	race := p.race[ref.fd]
+	race := p.getIoRace(ref)
 	if race == nil {
 		return fmt.Errorf("%s ioRace is undefined", ref.cid)
 	}
@@ -528,11 +526,12 @@ func (p *epoller) rearm1(ref reqRef) error {
 // ==================================================================
 func (p *epoller) resetIoReady(ref reqRef) {
 	// all events are handled as a oneshot event, so remove it from storage
-	label := "read"
-	race := p.race[ref.fd]
-	race.ready = false
-	race.armed = false
-	logger.Debugf("%s %s-ready status and %s-polling-armed status is reset", race.cid, label, label)
+	race := p.getIoRace(ref)
+	if race != nil {
+		race.ready = false
+		race.armed = false
+		logger.Debugf("%s %s-ready status and polling armed status is reset", race.cid, ref.mode.String())
+	}
 }
 
 // ==================================================================
@@ -540,7 +539,7 @@ func (p *epoller) run() {
 	// close poller fd & eventfd in defer
 	defer p.shutdown()
 
-	p.race = map[int]*ioRace{}
+	p.race = map[int][2]*ioRace{}
 	p.eventCh = make(chan ioEvent, 1)
 	p.running = true
 
@@ -640,8 +639,9 @@ func (p *epoller) wakeup(cpuid int) error {
 
 // ==================================================================
 func (p *epoller) watch(ref reqRef) error {
-	p.race[ref.fd] = newIoRace(ref)
-	logger.Debugf("epoller is calling a watch on %s[%d] with mode : %s", ref.cid, ref.fd, ref.mode.String())
+	p.race[ref.fd] = [2]*ioRace{newIoRace(ref.cid, EV_READ), newIoRace(ref.cid, EV_WRITE)}
+
+	logger.Debugf("epoller is calling a watch on %s[%d]", ref.cid, ref.fd)
 	return unix.EpollCtl(p.pfd, unix.EPOLL_CTL_ADD, ref.fd,
 		&unix.EpollEvent{Fd: int32(ref.fd), Events: uint32(ref.flags)})
 }

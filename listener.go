@@ -15,6 +15,11 @@ type HdpListener struct {
 	tpt            dtype.MultiCh
 }
 
+// ==================================================================
+func (d *HdpListener) Cid() string {
+	return d.cid
+}
+
 // ===========================================================================
 func (c *HdpListener) Accept() (*HdpConn, error) {
 	logger.Debugf("%s is accepting connections ...", c.cid)

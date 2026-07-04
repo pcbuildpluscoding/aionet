@@ -20,10 +20,10 @@ func (d *HdpDialer) Cid() string {
 }
 
 // ==================================================================
-func (d *HdpDialer) Dial(network, addr string) (*HdpConn, error) {
+func (d *HdpDialer) Dial(network, address string) (*HdpConn, error) {
 	logger.Debugf("%s is connecting to HdpListener ...", d.cid)
 
-	raddr, err := net.ResolveUDPAddr(network, addr)
+	raddr, err := net.ResolveUDPAddr(network, address)
 	if err != nil {
 		return nil, err
 	}
