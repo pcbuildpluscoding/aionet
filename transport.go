@@ -145,7 +145,7 @@ func (c *hdpRead1) onConnect(req dtype.HdpEvent) dtype.HdpEvent {
 			return NewHdpError(ErrConnectToNewConn, c.cid, "onConnect", err)
 		}
 		return nil
-	}
+	}()
 	return req.With(err)
 }
 
@@ -188,7 +188,7 @@ func (c *hdpRead1) onConnectAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 		c.windowSize = binary.LittleEndian.Uint16(hdr[8:10])
 		logger.Debugf("%s got window size in state HDP_CONNECT_ACK : %d", c.cid, wsize)
 		return nil
-	}
+	}()
 	return req.With(err)
 }
 

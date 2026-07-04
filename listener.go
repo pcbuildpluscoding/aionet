@@ -72,7 +72,7 @@ func (c *HdpListener) onAccept() (*HdpConn, error) {
 // ================================================================
 func (c *HdpListener) start() (*HdpListener, error) {
 	logger.Debugf("%s is starting ...", c.cid)
-	err := c.init(c.cid + "|")
+	err := c.init(c.cid + "|" + c.cid)
 	if err != nil {
 		return nil, err
 	}

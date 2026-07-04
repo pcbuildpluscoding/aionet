@@ -310,8 +310,10 @@ func (p *epoller) handleIoError(ev ioEvent) {
 // ==================================================================
 func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 	// all events are handled as a oneshot event, so remove it from storage
+	logger.Debugf("@@@@@@@@@@@@@@ epoller got io-ready events : %d", pev.Events)
 	key := int(pev.Fd)
 	race := p.race[key]
+	rearmed := false
 	switch {
 	case race == [2]*ioRace{}:
 		logger.Errorf("fd[%d] EV_READ ioRace does not exist for events, error : %x, %v", pev.Fd, pev.Events, ev.err)
@@ -337,6 +339,7 @@ func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 				mode: race[R].mode,
 			})
 			race[R].armed = true
+			rearmed = true
 			logger.Debugf("%s %s readiness polling is rearmed : %v ...", race[R].cid, race[R].mode.String(), err)
 		}
 	}
@@ -354,7 +357,7 @@ func (p *epoller) handleIoReady(pev unix.EpollEvent, ev ioEvent) {
 	default:
 		// bug-fix : confirm that a read-ready request exists for this fd
 		// rearm registered read event, otherwise epoller effectively deletes the previous read-ready state
-		if race[W].ch != nil {
+		if race[W].ch != nil && !rearmed {
 			err := p.rearm1(reqRef{
 				fd:   int(pev.Fd),
 				mode: race[W].mode,
