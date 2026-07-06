@@ -98,7 +98,7 @@ func (c *hdpRead2) setDeadline(req dtype.HdpEvent) {
 	err := <-epoller.SubmitIoReq(newHdpEvent(":data",
 		"reqRef/cid", c.cid,
 		"reqRef/fd", c.fd,
-		"reqRef/flags", int(epoller.PEV_READ),
+		"reqRef/flags", int(unix.EPOLLIN),
 		"reqRef/deadline", req.Value("deadline")))
 	req.Ch() <- req.With(err)
 }
@@ -106,9 +106,13 @@ func (c *hdpRead2) setDeadline(req dtype.HdpEvent) {
 // ===========================================================================
 type hdpWrite2 struct {
 	*socket
-	cid    string
-	refNum *[2]uint16
-	tpt    dtype.MultiCh
+	ackTimeout time.Duration
+	buffer     BufferW
+	cid        string
+	rb         *ringBuffer
+	refNum     *[2]uint16
+	// state      [2]dtype.HDP_STATE2
+	tpt dtype.MultiCh
 }
 
 // ===========================================================================
@@ -122,6 +126,31 @@ func (c *hdpWrite2) handle(req dtype.HdpEvent) {
 }
 
 // ===========================================================================
+func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
+	f := func() (int, error) {
+		if c.buffer.isFull() {
+			logger.Debugf("%s buffer is full : %v", c.cid, req)
+			return 0, VErrEOF
+		}
+		logger.Debugf("%s getting next seqNum ...", c.cid)
+		seqNum, err := c.rb.nextSeqNum()
+		if err != nil {
+			return 0, err
+		}
+		return c.buffer.addEntry(req.Bytes(), seqNum, req.UInt32("timerKey"), c.cid)
+	}
+	// flag := dtype.HDP_WRITE2
+	n, err := f()
+	if err != nil {
+		// in future this might change to HDP_ESCALATE and be referred to the control conn
+		// flag = dtype.HDP_RESET
+	}
+	// send the buffered frame length back to the HdpConn eventloop
+	logger.Debugf("%s returning HDP_DATAGRAM write result : %d", c.cid, n)
+	req.Ch() <- req.With(err, ":data", "byteNum", n)
+}
+
+// ===========================================================================
 func (c *hdpWrite2) run() {
 	logger.Debugf("%s is running ...", c.cid)
 	for ev := range c.tpt[W] {
@@ -131,16 +160,13 @@ func (c *hdpWrite2) run() {
 			return
 		}
 		logger.Debugf("@@@@@@@@@@@ %s got a new conn event : %v @@@@@@@@@@@@@@@@", c.cid, ev)
-		switch ev.Flag1() {
-		case dtype.HDP_DATAGRAM1:
+		switch ev.Flag2() {
+		case dtype.HDP_DATAGRAM:
 			if ev.Value("deadline") == nil {
 				c.writeFrame(ev)
 				continue
 			}
 			c.setDeadline(ev)
-		case dtype.HDP_RESET1:
-			logger.Debugf("@@@@@@@@@@@@@@@ %s got a HDP_RESET1 event @@@@@@@@@@@@@@@@", c.cid)
-			return
 		default:
 			c.handle(ev)
 		}
@@ -153,7 +179,7 @@ func (c *hdpWrite2) setDeadline(req dtype.HdpEvent) {
 	err := <-epoller.SubmitIoReq(newHdpEvent(":data",
 		"reqRef/cid", c.cid,
 		"reqRef/fd", c.fd,
-		"reqRef/flags", int(epoller.PEV_WRITE),
+		"reqRef/flags", int(unix.EPOLLOUT),
 		"reqRef/deadline", req.Value("deadline")))
 	req.Ch() <- req.With(err)
 }

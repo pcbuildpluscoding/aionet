@@ -114,7 +114,7 @@ func (c *hdpRead1) onAcceptAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 	refNum := binary.LittleEndian.Uint16(b[0:2])
 	c.refNum[1] = binary.LittleEndian.Uint16(b[2:4])
 
-	logger.Debugf("$$$$$$ %s onAcceptAcknow setting readHDP.refNum[1] from peer exchange, checking refNum[0] local, remote : %d, %d", c.cid, c.refNum, refNum)
+	logger.Debugf("$$$$$$ %s setting readHDP.refNum from peer exchange : %v", c.cid, c.refNum)
 
 	if c.refNum[0] != 0 && c.refNum[0] != refNum {
 		// reject the request and respond to the remotePeer
@@ -132,7 +132,7 @@ func (c *hdpRead1) onAcceptAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 	// logger.Debugf("%s got window size in state HDP_ACCEPT_ACK : %d", c.cid, wsize)
 	// res.data = wsize
 
-	// logger.Debugf("%s service is connected ...", c.cid)
+	// logger.Debugf("%s peer conn is connected, refnum : %v ...", c.cid, c.refNum)
 	return req
 }
 
@@ -207,7 +207,7 @@ func (c *hdpRead1) onConnectAcknow(req dtype.HdpEvent) dtype.HdpEvent {
 		}
 
 		c.refNum[1] = binary.LittleEndian.Uint16(hdr[:2])
-		logger.Debugf("####### %s onConnectAcknow setting readHDP.refNum from peer exchange : %v", c.cid, c.refNum)
+		logger.Debugf("####### %s setting readHDP.refNum from peer exchange : %v", c.cid, c.refNum)
 		// logger.Debugf("%s got new session refNum : %d", c.cid, c.refNum)
 
 		c.windowSize = binary.LittleEndian.Uint16(hdr[8:10])
@@ -274,31 +274,6 @@ func (c *hdpRead1) newHdpRead2() *hdpRead2 {
 		tpt:    c.tpt,
 	}
 	return conn
-}
-
-// ===========================================================================
-func (c *hdpRead1) parseHeader() ([]byte, error) {
-	h := make([]byte, 14)
-	// logger.Debugf("%s parseHeader is running ...", c.cid)
-	err := c.readHeader(h)
-	if err != nil {
-		return h, err
-	}
-
-	refNum := binary.LittleEndian.Uint16(h[:2])
-
-	if c.refNum[0] != 0 && c.refNum[0] != refNum {
-		// reject the request and respond to the remotePeer
-		logger.Debugf("######## %s got wrong peer refnum : %d, %d", c.cid, c.refNum[0], refNum)
-		return h, NewHdpError(ErrCodeWrongPeerRefNum)
-	}
-
-	err = verifyChecksum1(c.cid, h)
-	if err != nil {
-		return h, NewHdpError(ErrUnequalChecksum, c.cid, "parseHeader", err)
-	}
-
-	return h, nil
 }
 
 // ===========================================================================
@@ -481,29 +456,6 @@ func (c *hdpWrite1) acknowOpen(req dtype.HdpEvent) dtype.HdpEvent {
 	err := c.writeHeader(b, false)
 	logger.Debugf("%s hdpWrite remote connection is now open ...", c.cid)
 	return req.With(err)
-}
-
-// ===========================================================================
-func (c *hdpWrite1) connectTo(req dtype.HdpEvent) dtype.HdpEvent {
-	logger.Debugf("%s is connecting to peer ...", c.cid)
-
-	// logger.Debugf("%s refNum is created : %d", c.cid, c.refNum)
-	b := make([]byte, 14)
-	binary.LittleEndian.PutUint16(b[0:2], c.refNum[0])
-
-	// set the HDP_CONNECT_ACK flags
-	b[6] = byte(dtype.HDP_CONNECT)
-
-	// set the local window size value
-	wsize := req.UInt16("windowSize")
-	// logger.Debugf("%s is sending window size in state HDP_CONNECT_ACK : %d", c.cid, wsize)
-	binary.LittleEndian.PutUint16(b[8:10], wsize)
-
-	// insert the checksum
-	binary.LittleEndian.PutUint16(b[12:], crc16.Checksum(b, crc16.IBMTable))
-
-	// logger.Debugf("%s hdpWrite is writing the acknowConnect header ...", c.cid)
-	return req.With(c.writeHeader(b, false))
 }
 
 // ===========================================================================

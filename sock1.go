@@ -232,9 +232,9 @@ func (s *socket1) setDeadline(mode int, dura time.Duration) chan error {
 }
 
 // ================================================================
-func (c *socket) verifyChecksum(cid string, b []byte, crc uint16) error {
+func (c *socket) verifyChecksum(b []byte, crc uint16) error {
 	if crc != crc16.Checksum(b, crc16.IBMTable) {
-		return fmt.Errorf("%s checksum verification failed", cid) // unix.ECONNABORTED
+		return fmt.Errorf("checksum verification failed") // unix.ECONNABORTED
 	}
 	return nil
 }

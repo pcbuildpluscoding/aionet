@@ -30,6 +30,15 @@ func SetLogger(super *logroll.LogFile) {
 }
 
 // ===========================================================================
+func newBufEntry(b []byte, key uint32) *bufEntry {
+	return &bufEntry{
+		frame:    [2][]byte{0: b, 1: nil},
+		ackCh:    make(chan bool),
+		timerKey: key,
+	}
+}
+
+// ===========================================================================
 func newHdpEvent(args ...any) dtype.HdpEvent {
 	x := dtype.HdpEvent{}
 	return x.With(args...)
@@ -73,14 +82,56 @@ func newHdpRead2(s *socket, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead2 {
 }
 
 // ===========================================================================
-func newHdpWrite2(s *socket, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite2 {
+func newHdpWrite2(s *socket, rn *[2]uint16, tpt dtype.MultiCh, windowSize int) *hdpWrite2 {
 	return &hdpWrite2{
 		socket: s,
 		cid:    "hdpWrite2-" + time.Now().Format("05.00000"),
+		rb:     newRingBuffer(uint32(windowSize)),
 		refNum: rn,
 		tpt:    tpt,
 	}
 }
+
+// ===========================================================================
+func newRingBuffer(windowSize uint32) *ringBuffer {
+	gyro := gyroNumber{
+		window: windowSize,
+	}
+	rb := &ringBuffer{
+		gyro: gyro,
+		this: make([]*ringItem, windowSize),
+	}
+	rb.gyro.init()
+	return rb
+}
+
+// func newWriter3(s1 *socket1, rn *[2]uint16, req ioResult) *hdpWrite3 {
+// 	writeAckTimeout := 1000
+// 	timeout := req.Int("writeAckTimeout")
+// 	if timeout > 499 {
+// 		writeAckTimeout = timeout
+// 	}
+// 	bufferSize := 1024
+// 	bsize := req.Int("writeBufferSize")
+// 	if bsize > 31 {
+// 		bufferSize = bsize
+// 	}
+// 	if !req.HasKeys("eventCh") {
+// 		panic(fmt.Errorf("%s hdpWrite3 parameter chan writeReq is required", s1.cid))
+// 	}
+// 	eventCh, ok := req.Value("eventCh").([2]eventTpt)
+// 	if !ok {
+// 		panic("hdpWrite5 requires eventCh type == [2]eventTpt")
+// 	}
+// 	return &hdpWrite3{
+// 		ackTimeout: time.Duration(writeAckTimeout) * time.Millisecond,
+// 		socket5:    s1.newSocket5(eventCh),
+// 		refNum:     rn,
+// 		rb:         NewRingBuffer(16, uint32(s1.windowSize)),
+// 		buffer:     newBufferW3(bufferSize),
+// 		tw:         req.Value("testware").(*AdaptorTest),
+// 	}
+// }
 
 // ===========================================================================
 func NewHdpDialer() (*HdpDialer, error) {
