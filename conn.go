@@ -28,7 +28,8 @@ func (c *HdpConn) Read(b []byte) (int, error) {
 
 // ===========================================================================
 func (c *HdpConn) Write(b []byte) (int, error) {
-	res := <-c.tpt.SendEvent(W, dtype.HDP_DATAGRAM1, ":data", "frame", dtype.NewFrame(b)).Sync()
+	logger.Debugf("about to submit a write request")
+	res := <-c.tpt.SendEvent(W, dtype.HDP_DATAGRAM, ":data", "frame", dtype.NewFrame(b)).Sync()
 	logger.Debugf("%s got HDP_DATAGRAM write result : %v", c.cid, res)
 	return res.Retval()
 }

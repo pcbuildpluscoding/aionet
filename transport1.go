@@ -61,7 +61,7 @@ func (c *hdpRead2) run() {
 			logger.Debugf("@@@@@@@@@@@ %s got an error : %v @@@@@@@@@@@@@@@@", c.cid, ev.Err())
 			return
 		}
-		logger.Debugf("@@@@@@@@@@@ %s got a new conn event : %v @@@@@@@@@@@@@@@@", c.cid, ev)
+		logger.Debugf("@@@@@@@@@@@ %s got a new read event : %v @@@@@@@@@@@@@@@@", c.cid, ev)
 		switch ev.Flag1() {
 		case dtype.HDP_DATAGRAM1:
 			if ev.Value("deadline") == nil {
@@ -118,16 +118,21 @@ type hdpWrite2 struct {
 // ===========================================================================
 func (c *hdpWrite2) handle(req dtype.HdpEvent) {
 	logger.Debugf("%s is handling a request : %v ...", c.cid, req)
-	switch req.Flag1() {
-	case dtype.HDP_DATAGRAM1:
-		// write the data and send back the write result to the user
-	default:
+	switch req.Flag2() {
+	case dtype.HDP_DATAGRAM:
+		if req.Value("deadline") == nil {
+			c.putFrame(req)
+		} else {
+			c.setDeadline(req)
+		}
+	case dtype.HDP_WRITE1:
+		c.writeFrame(req)
 	}
 }
 
 // ===========================================================================
 func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
-	f := func() (int, error) {
+	_, err := func() (int, error) {
 		if c.buffer.isFull() {
 			logger.Debugf("%s buffer is full : %v", c.cid, req)
 			return 0, VErrEOF
@@ -137,18 +142,22 @@ func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
 		if err != nil {
 			return 0, err
 		}
-		return c.buffer.addEntry(req.Bytes(), seqNum, req.UInt32("timerKey"), c.cid)
-	}
-	// flag := dtype.HDP_WRITE2
-	n, err := f()
+		if !c.rb.windowFull() { // only proceed with frame write if ringBuffer is not full
+			logger.Debugf("%s ringbuffer has capacity ...", c.cid)
+			c.tpt[W] <- req.With(dtype.HDP_WRITE1, ":data", "seqNum", seqNum)
+		}
+		// if frame buffer is not full, add the next frame
+		return c.buffer.addEntry1(req.Bytes(), seqNum, c.cid)
+	}()
 	if err != nil {
-		// in future this might change to HDP_ESCALATE and be referred to the control conn
-		// flag = dtype.HDP_RESET
+		req.Ch() <- req.With(err)
 	}
-	// send the buffered frame length back to the HdpConn eventloop
-	logger.Debugf("%s returning HDP_DATAGRAM write result : %d", c.cid, n)
-	req.Ch() <- req.With(err, ":data", "byteNum", n)
 }
+
+// send the buffered frame length back to the HdpConn eventloop
+// logger.Debugf("%s returning HDP_DATAGRAM write result : %d", c.cid, n)
+// req.Ch() <- req.With(err, ":data", "byteNum", n)
+// }
 
 // ===========================================================================
 func (c *hdpWrite2) run() {
@@ -159,14 +168,8 @@ func (c *hdpWrite2) run() {
 			logger.Debugf("@@@@@@@@@@@ %s got an error : %v @@@@@@@@@@@@@@@@", c.cid, ev.Err())
 			return
 		}
-		logger.Debugf("@@@@@@@@@@@ %s got a new conn event : %v @@@@@@@@@@@@@@@@", c.cid, ev)
+		logger.Debugf("@@@@@@@@@@@ %s got a new write event : %v @@@@@@@@@@@@@@@@", c.cid, ev)
 		switch ev.Flag2() {
-		case dtype.HDP_DATAGRAM:
-			if ev.Value("deadline") == nil {
-				c.writeFrame(ev)
-				continue
-			}
-			c.setDeadline(ev)
 		default:
 			c.handle(ev)
 		}
@@ -204,15 +207,27 @@ func (c *hdpWrite2) write1(b []byte) (int, error) {
 
 // ===========================================================================
 func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
-	f := req.Frame()
-	logger.Debugf("$$$$$$$$$$$ %s[%d] got a new write frame : %s $$$$$$$$$$$$$", c.cid, c.fd, f.B)
+	fr := req.Frame()
+	logger.Debugf("$$$$$$$$$$$ %s[%d] got a new write frame : %s $$$$$$$$$$$$$", c.cid, c.fd, fr.B)
 	err := <-waitIoReady(c.cid, c.fd, EV_WRITE)
 	logger.Debugf("@@@@@@@@@@@@@@@@@ %s got io-ready result : %v", c.cid, err)
-	f.N, err = c.write1(f.B)
+	fr.N, err = c.write1(fr.B)
 	if err != nil {
 		req.Ch() <- newHdpEvent(err)
 		return
 	}
-	logger.Debugf("%s returning HDP_DATAGRAM write result : %d", c.cid, f.N)
-	req.Ch() <- req.With(err, ":data", "byteNum", f.N)
+	ch := make(chan bool, 1)
+	seqNum := req.UInt32("seqNum")
+	c.rb.setNextItem(seqNum)
+	go func() {
+		select {
+		case <-time.After(c.ackTimeout):
+			c.tpt[W] <- req.With(dtype.HDP_REPEAT)
+		case <-ch:
+			logger.Debugf("%s frame[%d] was acknowledged by the peer conn", c.cid, seqNum)
+			return
+		}
+	}()
+	logger.Debugf("%s returning HDP_WRITE1 write result : %d", c.cid, fr.N)
+	req.Ch() <- req.With(err, ":data", "byteNum", fr.N)
 }

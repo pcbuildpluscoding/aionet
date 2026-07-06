@@ -311,7 +311,7 @@ func (c *hdpRead1) run(readyCh chan bool) {
 		case dtype.HDP_OPEN1:
 			logger.Debugf("@@@@@@@@@@@@@@@ %s got a HDP_RESET1 event @@@@@@@@@@@@@@@@", c.cid)
 			// c.tpt[R] <- NewHdpEvent(dtype.HDP_INIT1)
-			c.newHdpRead2().run()
+			go c.newHdpRead2().run()
 			return
 		default:
 			c.handle(ev)
@@ -479,13 +479,19 @@ func (c *hdpWrite1) connectHdp(req dtype.HdpEvent) dtype.HdpEvent {
 }
 
 // ===========================================================================
-func (c *hdpWrite1) newHdpWrite2() *hdpWrite2 {
+func (c *hdpWrite1) newHdpWrite2A() *hdpWrite2 {
 	conn := &hdpWrite2{
 		socket: c.socket,
 		refNum: c.refNum,
 		tpt:    c.tpt,
 	}
 	return conn
+}
+
+// ===========================================================================
+func (c *hdpWrite1) newHdpWrite2() *hdpWrite2 {
+	logger.Debugf("%s creating new hdpWrite2 transport with windowSize : %d ...", c.cid, c.windowSize)
+	return newHdpWrite2(c.socket, c.refNum, c.tpt, c.windowSize)
 }
 
 // ===========================================================================
@@ -500,8 +506,8 @@ func (c *hdpWrite1) run(readyCh chan bool) {
 		}
 		switch ev.Flag1() {
 		case dtype.HDP_OPEN1:
-			logger.Debugf("@@@@@@@@@@@@@@@ %s got a HDP_RESET1 event @@@@@@@@@@@@@@@@", c.cid)
-			c.newHdpWrite2().run()
+			logger.Debugf("@@@@@@@@@@@@@@@ %s writer got a HDP_OPEN1 event @@@@@@@@@@@@@@@@", c.cid)
+			go c.newHdpWrite2().run()
 			return
 		default:
 			c.handle(ev)

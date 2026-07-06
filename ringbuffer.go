@@ -22,9 +22,9 @@ type gyroNumber struct {
 }
 
 // ---------------------------------------------------------------//
-// windowIsFull
+// windowFull
 // ---------------------------------------------------------------//
-func (g *gyroNumber) windowIsFull() bool {
+func (g *gyroNumber) windowFull() bool {
 	if g.firstUnAck == nil {
 		return false
 	}
@@ -117,26 +117,29 @@ type ringBuffer struct {
 }
 
 // ==================================================================
-func (b *ringBuffer) hasCapacity() bool {
-	return !b.gyro.windowIsFull()
+func (b *ringBuffer) windowFull() bool {
+	return b.gyro.windowFull()
 }
 
 // ==================================================================
 func (b *ringBuffer) nextSeqNum() (uint32, error) {
+	_, seqNum, err := b.gyro.next()
+	return seqNum, err
+}
+
+// ==================================================================
+func (b *ringBuffer) setNextItem(seqNum uint32) {
 	// equals 1 for the second item added
-	// if b.gyro.windowIsFull() {
+	// if b.gyro.windowFull() {
 	// 	return 0, NewHdpError(ErrRingBufferFull)
 	// }
-	i, seqNum, err := b.gyro.next()
-	if err == nil {
-		item := newRingItem(seqNum)
-		if b.gyro.firstUnAck == nil {
-			b.gyro.firstUnAck = item
-		}
-		b.this[i] = item
+	i := b.gyro.modulus(seqNum)
+	item := newRingItem(seqNum)
+	if b.gyro.firstUnAck == nil {
+		b.gyro.firstUnAck = item
 	}
+	b.this[i] = item
 	// logger.Debugf("$$$$$$ next send rindex, seqNum : %d, %d", i, seqNum)
-	return seqNum, err
 }
 
 // ==================================================================

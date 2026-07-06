@@ -90,5 +90,6 @@ var (
 	VErrRefused           = NewHdpError(ErrRefused, "this")
 	VErrReset             = NewHdpError(ErrReset, "this")
 	VErrEOF               = NewHdpError(ErrEOF, "this")
+	VErrRingBufferFull    = NewHdpError(ErrRingBufferFull, "this")
 	VWarnPrePolledIoReady = NewHdpError(WarnPrePolledIoReady, "this")
 )

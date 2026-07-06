@@ -39,6 +39,26 @@ func newBufEntry(b []byte, key uint32) *bufEntry {
 }
 
 // ===========================================================================
+func newBufEntry1(b []byte) *bufEntry {
+	return &bufEntry{
+		frame: [2][]byte{0: b, 1: nil},
+	}
+}
+
+// ===========================================================================
+func newBufferW(writeBufferSize int) BufferW {
+	if writeBufferSize < 128 {
+		writeBufferSize = 128
+	}
+	return BufferW{
+		this:   map[uint32]*bufEntry{},
+		resend: []uint32{},
+		seqNum: []uint32{},
+		size:   [2]int{0, writeBufferSize},
+	}
+}
+
+// ===========================================================================
 func newHdpEvent(args ...any) dtype.HdpEvent {
 	x := dtype.HdpEvent{}
 	return x.With(args...)
@@ -82,13 +102,15 @@ func newHdpRead2(s *socket, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead2 {
 }
 
 // ===========================================================================
-func newHdpWrite2(s *socket, rn *[2]uint16, tpt dtype.MultiCh, windowSize int) *hdpWrite2 {
+func newHdpWrite2(s *socket, rn *[2]uint16, tpt dtype.MultiCh, windowSize uint16) *hdpWrite2 {
 	return &hdpWrite2{
-		socket: s,
-		cid:    "hdpWrite2-" + time.Now().Format("05.00000"),
-		rb:     newRingBuffer(uint32(windowSize)),
-		refNum: rn,
-		tpt:    tpt,
+		socket:     s,
+		ackTimeout: 10 * time.Second,
+		cid:        "hdpWrite2-" + time.Now().Format("05.00000"),
+		buffer:     newBufferW(32),
+		rb:         newRingBuffer(uint32(windowSize)),
+		refNum:     rn,
+		tpt:        tpt,
 	}
 }
 

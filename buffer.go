@@ -16,9 +16,7 @@ type bufEntry struct {
 	timerKey uint32
 }
 
-// ---------------------------------------------------------------//
-// getFrame
-// ---------------------------------------------------------------//
+// ================================================================
 func (e *bufEntry) getFrame(resend bool) []byte {
 	if resend && e.frame[1] != nil && len(e.frame[1]) > 0 {
 		return e.frame[1]
@@ -36,9 +34,7 @@ type BufferW struct {
 	size   [2]int
 }
 
-// ---------------------------------------------------------------//
-// addEntry
-// ---------------------------------------------------------------//
+// ================================================================
 func (w *BufferW) addEntry(frame []byte, seqNum, timerKey uint32, cid string) (int, error) {
 	n := len(frame)
 	space := w.size[1] - w.size[0]
@@ -52,47 +48,46 @@ func (w *BufferW) addEntry(frame []byte, seqNum, timerKey uint32, cid string) (i
 	return n, nil
 }
 
-// ---------------------------------------------------------------//
-// addResend
-// ---------------------------------------------------------------//
+// ================================================================
+func (w *BufferW) addEntry1(frame []byte, seqNum uint32, cid string) (int, error) {
+	n := len(frame)
+	space := w.size[1] - w.size[0]
+	w.seqNum = append(w.seqNum, seqNum)
+	logger.Debugf("%s BufferW seqNum[%d] for data frame[%d] in space[%d]", cid, seqNum, n, space)
+	w.this[seqNum] = newBufEntry1(frame)
+	w.size[0] += n
+	return n, nil
+}
+
+// ================================================================
 func (w *BufferW) addResend(seqNum uint32) {
 	w.resend = append(w.resend, seqNum)
 }
 
-// ---------------------------------------------------------------//
-// getEntry
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferW) getEntry(seqNum uint32) *bufEntry {
 	return b.this[seqNum]
 }
 
-// ---------------------------------------------------------------//
-// isEmpty
-// ---------------------------------------------------------------//
+// ================================================================
 func (w *BufferW) isEmpty() bool {
 	logger.Debugf("BufferW current size : %d, %d, %d", w.size[0], w.size[1], len(w.seqNum))
 	return len(w.seqNum) == 0
 }
 
-// ---------------------------------------------------------------//
-// resendIsEmpty
-// ---------------------------------------------------------------//
+// ================================================================
 func (w *BufferW) resendIsEmpty() bool {
 	logger.Debugf("BufferW resend size : %d", len(w.resend))
 	return len(w.resend) == 0
 }
 
-// ---------------------------------------------------------------//
-// isFull
-// ---------------------------------------------------------------//
+// ================================================================
 func (w *BufferW) isFull() bool {
 	logger.Debugf("BufferW current size : %d, %d", w.size[0], w.size[1])
-	return w.size[1] == w.size[0]
+	return w.size[1] <= w.size[0]
 }
 
-// ---------------------------------------------------------------//
-// nextEntry
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferW) nextEntry(resend bool) (uint32, *bufEntry) {
 	var seqNum uint32
 	switch {
@@ -110,18 +105,14 @@ func (b *BufferW) nextEntry(resend bool) (uint32, *bufEntry) {
 	return seqNum, b.this[seqNum]
 }
 
-// ---------------------------------------------------------------//
-// pop
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferW) pop(seqNum uint32) *bufEntry {
 	e := b.this[seqNum]
 	delete(b.this, seqNum)
 	return e
 }
 
-// ---------------------------------------------------------------//
-// shiftLeft
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferW) shiftLeft(seqNum uint32, resend bool) {
 	if resend {
 		if len(b.resend) == 0 {
@@ -137,9 +128,7 @@ func (b *BufferW) shiftLeft(seqNum uint32, resend bool) {
 	b.seqNum = b.seqNum[1:]
 }
 
-// ---------------------------------------------------------------//
-// onFrameWrite
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferW) onFrameWrite(wn int) error {
 	seqNum, e := b.nextEntry(false)
 	if e == nil {
@@ -157,9 +146,7 @@ func (b *BufferW) onFrameWrite(wn int) error {
 	return nil
 }
 
-// ---------------------------------------------------------------//
-// onFrameRewrite
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferW) onFrameRewrite(wn int) error {
 	seqNum, e := b.nextEntry(true)
 	if e == nil {
@@ -192,9 +179,7 @@ type BufferR struct {
 	size [2]int
 }
 
-// ---------------------------------------------------------------//
-// Bytes
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) Bytes(delimiter ...[]byte) []byte {
 	del := []byte("")
 	if delimiter != nil {
@@ -203,9 +188,7 @@ func (b *BufferR) Bytes(delimiter ...[]byte) []byte {
 	return bytes.Join(b.this, del)
 }
 
-// ---------------------------------------------------------------//
-// Len
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) Len() int {
 	total := 0
 	for _, frame := range b.this {
@@ -214,23 +197,17 @@ func (b *BufferR) Len() int {
 	return total
 }
 
-// ---------------------------------------------------------------//
-// inEmpty
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) isEmpty() bool {
 	return b.Len() == 0
 }
 
-// ---------------------------------------------------------------//
-// inEmpty
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) isFull() bool {
 	return b.Len() == b.size[0]
 }
 
-// ---------------------------------------------------------------//
-// Read
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) Read(frame []byte) (int, error) {
 	nn := 0
 	for nn < len(frame) {
@@ -245,9 +222,7 @@ func (b *BufferR) Read(frame []byte) (int, error) {
 	return nn, nil
 }
 
-// ---------------------------------------------------------------//
-// read1
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) read1(c *socket, frame []byte) error {
 	count := 1
 	for nn := 0; nn < len(frame); {
@@ -267,9 +242,7 @@ func (b *BufferR) read1(c *socket, frame []byte) error {
 	return nil
 }
 
-// ---------------------------------------------------------------//
-// ReadFrom
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) ReadFrom(c *socket, offset, dsize int, crc uint16) (int, error) {
 	frame := make([]byte, dsize)
 	err := b.read1(c, frame)
@@ -282,9 +255,7 @@ func (b *BufferR) ReadFrom(c *socket, offset, dsize int, crc uint16) (int, error
 	return dsize, err
 }
 
-// ---------------------------------------------------------------//
-// read
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) resize(frame []byte) {
 	last := len(b.this) - 1
 	flast := b.this[last]
@@ -297,9 +268,7 @@ func (b *BufferR) resize(frame []byte) {
 	}
 }
 
-// ---------------------------------------------------------------//
-// writeTo
-// ---------------------------------------------------------------//
+// ================================================================
 func (b *BufferR) writeTo(frame []byte) (int, error) {
 	if len(b.this) == 0 {
 		return 0, io.EOF
