@@ -239,9 +239,9 @@ func newSocket(laddr, raddr *net.UDPAddr) (*socket, error) {
 
 // ===========================================================================
 func verifyChecksum1(cid string, b []byte) error {
-	crc := binary.LittleEndian.Uint16(b[12:14])
-	b[12] = 0
-	b[13] = 0
+	crc := binary.LittleEndian.Uint16(b[16:18])
+	b[16] = 0
+	b[17] = 0
 	// crc1 := crc16.Checksum(b, crc16.IBMTable)
 	// logger.Debugf("%s got frame size[%d] and checksum, and calculated : %d, %d", cid, len(b), crc, crc1)
 	if crc != crc16.Checksum(b, crc16.IBMTable) {
