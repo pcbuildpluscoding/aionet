@@ -63,6 +63,8 @@ func getTestbook1() ([]Testcase, error) {
 		switch strings.TrimSpace(tc) {
 		case "tc_netdb1":
 			y[i] = Testcase{"tc_netdb1": tc_netdb1, "name": "tc_netdb1"}
+		case "tc_netdb2":
+			y[i] = Testcase{"tc_netdb2": tc_netdb2, "name": "tc_netdb2"}
 		default:
 			return nil, fmt.Errorf("unknown testcase name : |%s|", tc)
 		}

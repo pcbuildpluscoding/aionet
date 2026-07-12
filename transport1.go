@@ -33,7 +33,7 @@ func (c *hdpRead2) handle(req dtype.HdpEvent) {
 // ===========================================================================
 func (c *hdpRead2) parseHeader() ([]byte, error) {
 	hdr := make([]byte, 18)
-	logger.Debugf("%s parseHeader is running ...", c.cid)
+	logger.Debugf("%s parseHeader is running with refNum : %v ...", c.cid, c.refNum)
 	_, err := c.read1(hdr)
 	if err != nil {
 		return nil, err
@@ -198,6 +198,7 @@ func (c *hdpRead2) setDeadline(req dtype.HdpEvent) {
 		"reqRef/cid", c.cid,
 		"reqRef/fd", c.fd,
 		"reqRef/flags", int(unix.EPOLLIN),
+		"reqRef/mode", int(EV_READ),
 		"reqRef/deadline", req.Value("deadline")))
 	req.Ch() <- req.With(err)
 }
@@ -277,11 +278,12 @@ func (c *hdpWrite2) run() {
 
 // ===========================================================================
 func (c *hdpWrite2) setDeadline(req dtype.HdpEvent) {
-	logger.Debugf("$$$$$$$$$$$ %s[%d] is setting a read deadline ...", c.cid, c.fd)
+	logger.Debugf("$$$$$$$$$$$ %s[%d] is setting a write deadline ...", c.cid, c.fd)
 	err := <-epoller.SubmitIoReq(newHdpEvent(":data",
 		"reqRef/cid", c.cid,
 		"reqRef/fd", c.fd,
 		"reqRef/flags", int(unix.EPOLLOUT),
+		"reqRef/mode", int(EV_WRITE),
 		"reqRef/deadline", req.Value("deadline")))
 	req.Ch() <- req.With(err)
 }
@@ -316,7 +318,11 @@ func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
 		return
 	}
 	seqNum := req.UInt32("seqNum")
-	c.writeHeader(seqNum, 0, fr.B)
+	_, err = c.writeHeader(seqNum, 0, fr.B)
+	if err != nil {
+		req.Ch() <- newHdpEvent(err)
+		return
+	}
 	fr.N, err = c.write1(fr.B)
 	if err != nil {
 		req.Ch() <- newHdpEvent(err)
@@ -338,8 +344,9 @@ func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
 }
 
 // ===========================================================================
-func (c *hdpWrite2) writeHeader(seqNum uint32, ackSeqNum uint32, frame []byte) {
+func (c *hdpWrite2) writeHeader(seqNum uint32, ackSeqNum uint32, frame []byte) (int, error) {
 	hdr := make([]byte, 18)
+	logger.Debugf("%s writing refNum[1] in header : %v", c.cid, c.refNum[1])
 	binary.LittleEndian.PutUint16(hdr[0:2], c.refNum[1])
 	binary.LittleEndian.PutUint32(hdr[2:6], seqNum)
 	binary.LittleEndian.PutUint32(hdr[6:10], ackSeqNum)
@@ -349,4 +356,5 @@ func (c *hdpWrite2) writeHeader(seqNum uint32, ackSeqNum uint32, frame []byte) {
 	binary.LittleEndian.PutUint16(hdr[12:14], uint16(len(frame)))
 	binary.LittleEndian.PutUint16(hdr[14:16], crc16.Checksum(frame, crc16.IBMTable))
 	binary.LittleEndian.PutUint16(hdr[16:], crc16.Checksum(hdr, crc16.IBMTable))
+	return c.write1(hdr)
 }

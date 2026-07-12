@@ -154,7 +154,7 @@ func SubmitIoReq(ev dtype.HdpEvent) chan error {
 }
 
 // ===========================================================================
-func PevString(pev uint32) string {
+func PevString(pev int) string {
 	switch pev {
 	case PEV_ERROR:
 		return "PEV_ERROR"

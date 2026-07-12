@@ -92,21 +92,21 @@ func newHdpWrite1(s socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite1 {
 }
 
 // ===========================================================================
-func newHdpRead2(s *socket, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead2 {
+func newHdpRead2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead2 {
 	return &hdpRead2{
 		socket: s,
-		cid:    "hdpRead2-" + time.Now().Format("05.00000"),
+		cid:    cid,
 		refNum: rn,
 		tpt:    tpt,
 	}
 }
 
 // ===========================================================================
-func newHdpWrite2(s *socket, rn *[2]uint16, tpt dtype.MultiCh, windowSize uint16) *hdpWrite2 {
+func newHdpWrite2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh, windowSize uint16) *hdpWrite2 {
 	return &hdpWrite2{
 		socket:     s,
 		ackTimeout: 10 * time.Second,
-		cid:        "hdpWrite2-" + time.Now().Format("05.00000"),
+		cid:        cid,
 		buffer:     newBufferW(32),
 		rb:         newRingBuffer(uint32(windowSize)),
 		refNum:     rn,

@@ -269,6 +269,7 @@ func (c *hdpRead1) onOpenAcknow(res dtype.HdpEvent) dtype.HdpEvent {
 func (c *hdpRead1) newHdpRead2() *hdpRead2 {
 	conn := &hdpRead2{
 		socket: c.socket,
+		cid:    c.cid,
 		refNum: c.refNum,
 		tpt:    c.tpt,
 	}
@@ -490,7 +491,7 @@ func (c *hdpWrite1) newHdpWrite2A() *hdpWrite2 {
 // ===========================================================================
 func (c *hdpWrite1) newHdpWrite2() *hdpWrite2 {
 	logger.Debugf("%s creating new hdpWrite2 transport with windowSize : %d ...", c.cid, c.windowSize)
-	return newHdpWrite2(c.socket, c.refNum, c.tpt, c.windowSize)
+	return newHdpWrite2(c.socket, c.cid, c.refNum, c.tpt, c.windowSize)
 }
 
 // ===========================================================================

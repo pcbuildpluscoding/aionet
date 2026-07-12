@@ -414,9 +414,9 @@ func (p *epoller) handleReq(req ioReq) {
 func (p *epoller) handleTimeout(pev unix.EpollEvent, ev ioEvent) {
 	// token := p.lock.Get("epoller", "epoller.handleTimeout", 0)
 
-	logger.Debugf("epoller is handling an io-timeout event ...")
 	key := int(pev.Fd)
 	ref := ev.req.ref
+	logger.Debugf("epoller is handling an %s io-timeout event ...", ref.mode.String())
 	race := p.getIoRace(ref)
 	switch {
 	case race == nil:
@@ -462,7 +462,7 @@ func (p *epoller) raceDeadline(ref reqRef) error {
 	}
 	race.timedAt = zeroTime
 	dlRef, doneCh := race.newDoneCh()
-	logger.Debugf("%s got new ioRace and doneCh, ref.flags, deadline ref : %d, %d", ref.cid, ref.flags, dlRef)
+	logger.Debugf("%s got new %s ioRace and doneCh, ref.flags : %s", ref.cid, ref.mode.String(), PevString(ref.flags))
 	event := newIoEvent(ref, dlRef, unix.EpollEvent{
 		Events: uint32(ref.flags),
 		Fd:     int32(ref.fd),
@@ -485,7 +485,7 @@ func (p *epoller) raceDeadline1(ref reqRef, event ioEvent, doneCh chan error) fu
 			return
 		case t := <-timer.C:
 			event.timedAt = t
-			logger.Debugf("%s epoller %s event deadline expired ...", ref.cid, PevString(event.pev[0].Events))
+			logger.Debugf("%s epoller %s event deadline expired ...", ref.cid, PevString(int(event.pev[0].Events)))
 		}
 		p.eventCh <- event
 	}
@@ -651,8 +651,12 @@ func (p *epoller) watch(ref reqRef) error {
 	p.race[ref.fd] = [2]*ioRace{newIoRace(cid[R], EV_READ), newIoRace(cid[W], EV_WRITE)}
 
 	logger.Debugf("epoller is calling a watch on conn[%d] with cid[%s, %s]", ref.fd, cid[R], cid[W])
-	return unix.EpollCtl(p.pfd, unix.EPOLL_CTL_ADD, ref.fd,
+	err := unix.EpollCtl(p.pfd, unix.EPOLL_CTL_ADD, ref.fd,
 		&unix.EpollEvent{Fd: int32(ref.fd), Events: uint32(ref.flags)})
+	race1 := p.race[ref.fd][R]
+	race2 := p.race[ref.fd][W]
+	logger.Debugf("got watch result for %s race : %s, %s race : %s, error : %v", race1.mode.String(), race1.cid, race2.mode.String(), race2.cid, err)
+	return err
 }
 
 // ==================================================================//

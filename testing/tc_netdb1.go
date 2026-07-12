@@ -81,3 +81,66 @@ func listen1(l1 *aio.HdpListener, readyCh [2]chan bool, errCh chan error, params
 	params.Add(":data", "acceptConn", conn)
 	errCh <- err
 }
+
+// ===========================================================================
+func tc_netdb2(t *testing.T, params Result, args ...any) Result {
+	logger.Debugf("$$$$$$$$$$$ running tc_netdb2 $$$$$$$$$$$$")
+	err := func() error {
+		errCh := make(chan error, 1)
+		go listen2(errCh, params)
+		go dial2(errCh, params)
+		logger.Debugf("tc_netdb2 is running ...")
+		dura := time.Duration(30) * time.Second
+		count := 0
+		for count < 2 {
+			select {
+			case <-time.After(dura):
+				return fmt.Errorf("tc_netdb timedout !!")
+			case err := <-errCh:
+				if err != nil {
+					return fmt.Errorf("tc_netdb got a listen or dial error : %v", err)
+				}
+			}
+			count++
+		}
+
+		logger.Debugf("tc_netdb is complete")
+		return nil
+	}()
+	return params.With(err)
+}
+
+// ===========================================================================
+func dial2(errCh chan error, params Result) {
+	conn, _ := params.Value("dialConn").(*aio.HdpConn)
+	if conn == nil {
+		errCh <- fmt.Errorf("params.dialConn is undefined")
+		return
+	}
+	logger.Debugf("@@@@@@@@@@@@@@@ reusing dialer.Dial conn @@@@@@@@@@@@@@@@@@@")
+	<-time.After(3 * time.Second)
+	n, err := conn.Write([]byte("TEST1 : THIS CODE MUST READ AND WRITE"))
+	logger.Debugf("%s got conn.Write result, num bytes written, error : %d, %v", conn.Cid(), n, err)
+	params.Add(":data", "dialConn", conn)
+	errCh <- err
+}
+
+// ===========================================================================
+func listen2(errCh chan error, params Result) {
+	conn, _ := params.Value("acceptConn").(*aio.HdpConn)
+	if conn == nil {
+		errCh <- fmt.Errorf("params.acceptConn is undefined")
+		return
+	}
+	logger.Debugf("@@@@@@@@@@@@@@@ reusing listener.Accept conn @@@@@@@@@@@@@@@@@@@")
+	err := conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if err != nil {
+		errCh <- err
+		return
+	}
+	b := make([]byte, 37)
+	n, err := conn.Read(b)
+	logger.Debugf("%s got conn.Read result, num bytes, error, frame : %d, %v, %s", conn.Cid(), n, err, b)
+	params.Add(":data", "acceptConn", conn)
+	errCh <- err
+}
