@@ -46,9 +46,20 @@ func newBufEntry1(b []byte) *bufEntry {
 }
 
 // ===========================================================================
+func newBufferR(readBufferSize int) BufferR {
+	if readBufferSize < 16 {
+		readBufferSize = 16
+	}
+	return BufferR{
+		this: [][]byte{},
+		size: [2]int{0, readBufferSize},
+	}
+}
+
+// ===========================================================================
 func newBufferW(writeBufferSize int) BufferW {
-	if writeBufferSize < 128 {
-		writeBufferSize = 128
+	if writeBufferSize < 16 {
+		writeBufferSize = 16
 	}
 	return BufferW{
 		this:   map[uint32]*bufEntry{},
@@ -95,6 +106,7 @@ func newHdpWrite1(s socket1, rn *[2]uint16, tpt dtype.MultiCh) *hdpWrite1 {
 func newHdpRead2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh) *hdpRead2 {
 	return &hdpRead2{
 		socket: s,
+		buffer: newBufferR(16),
 		cid:    cid,
 		refNum: rn,
 		tpt:    tpt,
@@ -107,7 +119,7 @@ func newHdpWrite2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh, windo
 		socket:     s,
 		ackTimeout: 10 * time.Second,
 		cid:        cid,
-		buffer:     newBufferW(32),
+		buffer:     newBufferW(16),
 		rb:         newRingBuffer(uint32(windowSize)),
 		refNum:     rn,
 		tpt:        tpt,

@@ -160,7 +160,7 @@ func (c *hdpRead2) readFrame(req dtype.HdpEvent) {
 
 // ===========================================================================
 func (c *hdpRead2) read2(req dtype.HdpEvent, data []byte) {
-	logger.Debugf("$$$$$$$$$$$ %s[%d] is reading a new frame ...", c.cid, c.fd)
+	logger.Debugf("$$$$$$$$$$$ %s[%d] is reading frame2 ...", c.cid, c.fd)
 	// logger.Debugf("%s is wanting read readiness ...", c.cid)
 	b := req.Bytes()
 	n, err := c.read3(b, int(binary.LittleEndian.Uint16(data[:2])), binary.LittleEndian.Uint16(data[2:]))

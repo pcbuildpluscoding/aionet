@@ -65,6 +65,8 @@ func getTestbook1() ([]Testcase, error) {
 			y[i] = Testcase{"tc_netdb1": tc_netdb1, "name": "tc_netdb1"}
 		case "tc_netdb2":
 			y[i] = Testcase{"tc_netdb2": tc_netdb2, "name": "tc_netdb2"}
+		case "tc_netdb3":
+			y[i] = Testcase{"tc_netdb3": tc_netdb3, "name": "tc_netdb3"}
 		default:
 			return nil, fmt.Errorf("unknown testcase name : |%s|", tc)
 		}

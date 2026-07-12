@@ -180,6 +180,12 @@ type BufferR struct {
 }
 
 // ================================================================
+func (b *BufferR) Add(f []byte) {
+	b.this = append(b.this, f)
+	b.size[0] += len(f)
+}
+
+// ================================================================
 func (b *BufferR) Bytes(delimiter ...[]byte) []byte {
 	del := []byte("")
 	if delimiter != nil {
@@ -190,11 +196,11 @@ func (b *BufferR) Bytes(delimiter ...[]byte) []byte {
 
 // ================================================================
 func (b *BufferR) Len() int {
-	total := 0
+	b.size[1] = 0
 	for _, frame := range b.this {
-		total += len(frame)
+		b.size[1] += len(frame)
 	}
-	return total
+	return b.size[1]
 }
 
 // ================================================================
@@ -204,7 +210,8 @@ func (b *BufferR) isEmpty() bool {
 
 // ================================================================
 func (b *BufferR) isFull() bool {
-	return b.Len() == b.size[0]
+	b.Len()
+	return b.size[1] >= b.size[0]
 }
 
 // ================================================================
@@ -215,6 +222,7 @@ func (b *BufferR) Read(frame []byte) (int, error) {
 		if n > 0 {
 			nn += n
 		}
+		logger.Debugf("@@@@@@@@@@@@@@@@@ bufferR wrote[%d] to frame ...", n)
 		if err != nil {
 			return nn, err
 		}
@@ -250,8 +258,14 @@ func (b *BufferR) ReadFrom(c *socket, offset, dsize int, crc uint16) (int, error
 		logger.Debugf("########## Buffer got an conn.ReadFrom error : %v", err)
 		return 0, err
 	}
+	logger.Debugf("@@@@@@@@@@ bufferR is adding a frame : %s", frame)
+	b.Add(frame[offset:])
 	err = c.verifyChecksum(frame, crc)
-	b.resize(frame[offset:])
+	if err != nil {
+		return 0, err
+	}
+	logger.Debugf("@@@@@@@@@@ bufferR has resized a frame : %s", frame[offset:])
+	// b.resize(frame[offset:])
 	return dsize, err
 }
 
@@ -269,23 +283,24 @@ func (b *BufferR) resize(frame []byte) {
 }
 
 // ================================================================
+// this complements bufferR.Read procedure
 func (b *BufferR) writeTo(frame []byte) (int, error) {
 	if len(b.this) == 0 {
 		return 0, io.EOF
 	}
 	last0 := len(b.this[0]) - 1
 	i := 0
-	for i, _ = range frame {
+	for i = range frame {
 		frame[i] = b.this[0][i]
 		if i == last0 {
 			// len(frame) >= b.this[0]
 			if len(b.this) > 0 {
 				b.this = b.this[1:]
 			}
-			return i, nil
+			return i + 1, nil
 		}
 	}
 	// len(frame) < b.this[0]
 	b.this[0] = b.this[0][i:]
-	return i, nil
+	return i + 1, nil
 }

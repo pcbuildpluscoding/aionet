@@ -267,13 +267,7 @@ func (c *hdpRead1) onOpenAcknow(res dtype.HdpEvent) dtype.HdpEvent {
 
 // ===========================================================================
 func (c *hdpRead1) newHdpRead2() *hdpRead2 {
-	conn := &hdpRead2{
-		socket: c.socket,
-		cid:    c.cid,
-		refNum: c.refNum,
-		tpt:    c.tpt,
-	}
-	return conn
+	return newHdpRead2(c.socket, c.cid, c.refNum, c.tpt)
 }
 
 // ===========================================================================
@@ -476,16 +470,6 @@ func (c *hdpWrite1) connectHdp(req dtype.HdpEvent) dtype.HdpEvent {
 		err = NewHdpError(ErrWriteToNewConn, c.cid, "connectHDP", n, err)
 	}
 	return req.With(err)
-}
-
-// ===========================================================================
-func (c *hdpWrite1) newHdpWrite2A() *hdpWrite2 {
-	conn := &hdpWrite2{
-		socket: c.socket,
-		refNum: c.refNum,
-		tpt:    c.tpt,
-	}
-	return conn
 }
 
 // ===========================================================================
