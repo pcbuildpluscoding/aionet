@@ -117,7 +117,8 @@ func newHdpRead2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh) *hdpRe
 func newHdpWrite2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh, windowSize uint16) *hdpWrite2 {
 	return &hdpWrite2{
 		socket:     s,
-		ackTimeout: 10 * time.Second,
+		ackDoneCh:  map[uint32]chan bool{},
+		ackTimeout: 7 * time.Second,
 		cid:        cid,
 		buffer:     newBufferW(16),
 		rb:         newRingBuffer(uint32(windowSize)),

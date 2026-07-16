@@ -20,6 +20,11 @@ func (c *HdpConn) Cid() string {
 }
 
 // ===========================================================================
+func (c *HdpConn) ReadHdr() {
+	c.tpt.SendEvent(R, dtype.HDP_READ1, ":data", "bytes", []byte{}).Async()
+}
+
+// ===========================================================================
 func (c *HdpConn) Read(b []byte) (int, error) {
 	res := <-c.tpt.SendEvent(R, dtype.HDP_READ1, ":data", "bytes", b).Sync()
 	logger.Debugf("%s got HDP_DATAGRAM read result : %v", c.cid, res)

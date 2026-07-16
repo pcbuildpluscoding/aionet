@@ -156,10 +156,10 @@ func (b *ringBuffer) updateAckSeqNum(seqNum uint32) error {
 		}
 		return fmt.Errorf("seqNumAck does not match the reference value : %d, %d", seqNum, item.seqNum)
 	}
-	// logger.Debugf("acknowledged index, seqNum, ringItem.seqNum : %d, %d, %d", j, seqNum, item.seqNum)
+	logger.Debugf("acknowledged index, seqNum, ringItem.seqNum : %d, %d, %d", j, seqNum, item.seqNum)
 	if !b.gyro.ackNumIsOldest(b.this[j]) {
 		item.reset()
-		// logger.Debugf("acknowSeqNum %d is not the oldest for this session : %d", seqNum, b.gyro.firstUnAck.seqNum)
+		logger.Debugf("acknowSeqNum %d is not the oldest for this session : %d", seqNum, b.gyro.firstUnAck.seqNum)
 		return nil
 	}
 	item.reset()
@@ -167,13 +167,14 @@ func (b *ringBuffer) updateAckSeqNum(seqNum uint32) error {
 	// range over the list from starting at j+1, ending back at j if an unAckSeqNum is not found.
 	for i := uint32(1); i <= b.gyro.window; i++ {
 		k = (j + i) % b.gyro.window
+		// logger.Debugf("next window index : %d", k)
 		item = b.this[k]
 		if item != nil && !item.sentAck {
 			break
 		}
 	}
 	if item != nil {
-		// logger.Debugf("next unacknowledged index, seqNum : %d, %d", k, b.this[k].seqNum)
+		logger.Debugf("next acknowledged index, seqNum : %d, %d", k, b.this[k].seqNum)
 	}
 	b.gyro.updateUnAck(b.this[k])
 	return nil

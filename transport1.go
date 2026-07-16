@@ -24,6 +24,9 @@ type hdpRead2 struct {
 func (c *hdpRead2) handle(req dtype.HdpEvent) {
 	logger.Debugf("%s is handling a request : %v ...", c.cid, req)
 	switch req.Flag2() {
+	case dtype.HDP_DATA_ACK:
+		logger.Debugf("%s is reading a HDP_DATA_ACK message ...", c.cid)
+		c.parseHeader()
 	case dtype.HDP_READ1:
 		if req.Value("deadline") == nil {
 			c.readFrame(req)
@@ -64,12 +67,12 @@ func (c *hdpRead2) parseHeader() (dtype.HDP_STATE2, []byte, error) {
 		logger.Debugf("%s got HDP_RMT_CLOSING notice", c.cid)
 		return dtype.HDP_RMT_CLOSING, nil, io.EOF
 	case dtype.HDP_DATA_ACK:
-		c.tpt[W] <- newHdpEvent(dtype.HDP_DATA_ACK, ":data", "bytes", hdr[2:6])
+		logger.Debugf("%s got HDP_DATA_ACK seqNum : %d", c.cid, binary.LittleEndian.Uint32(hdr[6:10]))
+		c.tpt[W] <- newHdpEvent(dtype.HDP_DATA_ACK, ":data", "bytes", hdr[2:10])
 	case dtype.HDP_DATAGRAM:
 		// push the peer seqNum and acknowledged local seqNum to the write channel
 		// and append the data size and checksum
 		logger.Debugf("%s got HDP_DATAGRAM frame with seqNum : %d", c.cid, binary.LittleEndian.Uint32(hdr[2:6]))
-		logger.Debugf("%s got acknowledged seqNum : %d", c.cid, binary.LittleEndian.Uint32(hdr[6:10]))
 		c.tpt[W] <- newHdpEvent(dtype.HDP_DATAGRAM, ":data", "bytes", hdr[2:10])
 	}
 	return flag, hdr[10:16], nil
@@ -118,20 +121,6 @@ func (c *hdpRead2) run() {
 }
 
 // ===========================================================================
-func (c *hdpRead2) readFrame0(req dtype.HdpEvent) {
-	logger.Debugf("$$$$$$$$$$$ %s[%d] is reading a new frame ...", c.cid, c.fd)
-	b := req.Bytes()
-	n, err := c.read1(b)
-	if err != nil {
-		logger.Debugf("%s got reading error : %v", c.cid, err)
-		req.Ch() <- newHdpEvent(err)
-		return
-	}
-	logger.Debugf("%s returning HDP_DATAGRAM read result : %s", c.cid, b)
-	req.Ch() <- req.With(err, ":data", "byteNum", n)
-}
-
-// ===========================================================================
 func (c *hdpRead2) readFrame(req dtype.HdpEvent) {
 	logger.Debugf("$$$$$$$$$$$ %s[%d] is reading a new frame ...", c.cid, c.fd)
 	if c.buffer.Len() > 0 {
@@ -164,7 +153,12 @@ func (c *hdpRead2) read2(req dtype.HdpEvent, data []byte) {
 	logger.Debugf("$$$$$$$$$$$ %s[%d] is reading frame2 ...", c.cid, c.fd)
 	// logger.Debugf("%s is wanting read readiness ...", c.cid)
 	b := req.Bytes()
-	n, err := c.read3(b, int(binary.LittleEndian.Uint16(data[2:4])), binary.LittleEndian.Uint16(data[4:6]))
+	if len(b) == 0 {
+		logger.Debugf("%s got 0 data size, aborting read ...", c.cid)
+		return
+	}
+	dsize := int(binary.LittleEndian.Uint16(data[2:4]))
+	n, err := c.read3(b, dsize, binary.LittleEndian.Uint16(data[4:6]))
 	logger.Debugf("%s returning HDP_DATAGRAM read result : %s", c.cid, b)
 	req.Ch() <- req.With(err, ":data", "byteNum", n)
 }
@@ -204,16 +198,11 @@ func (c *hdpRead2) setDeadline(req dtype.HdpEvent) {
 	req.Ch() <- req.With(err)
 }
 
-type forAckSeqNum struct {
-	seqNum uint32
-	stopCh chan bool
-}
-
 // ===========================================================================
 type hdpWrite2 struct {
 	*socket
 	ackTimeout time.Duration
-	ackSeqNum  []forAckSeqNum
+	ackDoneCh  map[uint32]chan bool
 	buffer     BufferW
 	cid        string
 	rb         *ringBuffer
@@ -229,7 +218,9 @@ func (c *hdpWrite2) handle(req dtype.HdpEvent) {
 	case dtype.HDP_DATA_ACK:
 		c.resetAckSeqnum(req)
 	case dtype.HDP_DATAGRAM:
-		//c.resetAckSeqnum1(req)
+		c.acknowSeqnum(req)
+	case dtype.HDP_REPEAT:
+		logger.Debugf("%s got a HDP_REPEAT acknowledgement timeout resend request", c.cid)
 	case dtype.HDP_WRITE1:
 		if req.Value("deadline") == nil {
 			c.putFrame(req)
@@ -239,6 +230,14 @@ func (c *hdpWrite2) handle(req dtype.HdpEvent) {
 	case dtype.HDP_WRITE2:
 		c.writeFrame(req)
 	}
+}
+
+// ===========================================================================
+func (c *hdpWrite2) acknowSeqnum(req dtype.HdpEvent) {
+	data := req.Bytes()
+	seqNum := binary.LittleEndian.Uint32(data[:4])
+	logger.Debugf("%s is writing a seqNum[%d] acknowledgement to the peer conn ...", c.cid, seqNum)
+	_, _ = c.writeHeader1(0, seqNum, dtype.HDP_DATA_ACK, 0, 0)
 }
 
 // ===========================================================================
@@ -267,22 +266,14 @@ func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
 
 // ===========================================================================
 func (c *hdpWrite2) resetAckSeqnum(req dtype.HdpEvent) {
-	// first get the peer seqNum and send back acknowledgement
-	b := req.Bytes()
-	seqNum := binary.LittleEndian.Uint32(b[:4])
-	ch := make(chan bool, 1)
-	go func() {
-		select {
-		case <-time.After(2 * time.Second):
-			_, _ = c.writeHeader1(seqNum, 0, dtype.HDP_DATA_ACK, 0, 0)
-		case <-ch:
-			logger.Debugf("writing peer seqNum %d acknowledgement is interrupted !!!", seqNum)
-		}
-	}()
-	c.ackSeqNum = append(c.ackSeqNum, forAckSeqNum{
-		seqNum: seqNum,
-		stopCh: ch,
-	})
+	logger.Debugf("%s is checking peer conn seqNum acknowledgement ...", c.cid)
+	data := req.Bytes()
+	seqNum := binary.LittleEndian.Uint32(data[4:])
+	doneCh, _ := c.ackDoneCh[seqNum]
+	if doneCh != nil {
+		logger.Debugf("%s got peer conn seqNum[%d] acknowledgement ...", c.cid, seqNum)
+		doneCh <- true
+	}
 }
 
 // ===========================================================================
@@ -344,6 +335,7 @@ func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
 		return
 	}
 	seqNum := req.UInt32("seqNum")
+	logger.Debugf("@@@@@@@@@@@@@@@@@ %s got seqNum for write header : %d", c.cid, seqNum)
 	_, err = c.writeHeader(seqNum, 0, fr.B)
 	if err != nil {
 		req.Ch() <- newHdpEvent(err)
@@ -356,15 +348,19 @@ func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
 	}
 	ch := make(chan bool, 1)
 	c.rb.setNextItem(seqNum)
+	c.ackDoneCh[seqNum] = ch
 	go func() {
 		select {
 		case <-time.After(c.ackTimeout):
 			c.tpt[W] <- req.With(dtype.HDP_REPEAT)
 		case <-ch:
 			logger.Debugf("%s frame[%d] was acknowledged by the peer conn", c.cid, seqNum)
+			c.rb.updateAckSeqNum(seqNum)
 			return
 		}
 	}()
+	// notify reader to read the expected HDP_DATA_ACK message
+	c.tpt[R] <- newHdpEvent(dtype.HDP_DATA_ACK)
 	logger.Debugf("%s returning HDP_WRITE1 write result : %d", c.cid, fr.N)
 	req.Ch() <- req.With(err, ":data", "byteNum", fr.N)
 }

@@ -215,6 +215,7 @@ func (b *BufferR) isFull() bool {
 }
 
 // ================================================================
+// this complements bufferR.writeTo procedure
 func (b *BufferR) Read(frame []byte) (int, error) {
 	nn := 0
 	for nn < len(frame) {
