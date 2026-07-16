@@ -21,7 +21,7 @@ func (c *HdpConn) Cid() string {
 
 // ===========================================================================
 func (c *HdpConn) Read(b []byte) (int, error) {
-	res := <-c.tpt.SendEvent(R, dtype.HDP_DATAGRAM1, ":data", "bytes", b).Sync()
+	res := <-c.tpt.SendEvent(R, dtype.HDP_READ1, ":data", "bytes", b).Sync()
 	logger.Debugf("%s got HDP_DATAGRAM read result : %v", c.cid, res)
 	return res.Retval()
 }
@@ -29,7 +29,7 @@ func (c *HdpConn) Read(b []byte) (int, error) {
 // ===========================================================================
 func (c *HdpConn) Write(b []byte) (int, error) {
 	logger.Debugf("about to submit a write request")
-	res := <-c.tpt.SendEvent(W, dtype.HDP_DATAGRAM, ":data", "frame", dtype.NewFrame(b)).Sync()
+	res := <-c.tpt.SendEvent(W, dtype.HDP_WRITE1, ":data", "frame", dtype.NewFrame(b)).Sync()
 	logger.Debugf("%s got HDP_DATAGRAM write result : %v", c.cid, res)
 	return res.Retval()
 }
@@ -68,14 +68,14 @@ func (c *HdpConn) Run() {
 
 // ===========================================================================
 func (c *HdpConn) SetReadDeadline(dl time.Time) error {
-	res := <-c.tpt.SendEvent(R, dtype.HDP_DATAGRAM1, ":data", "deadline", dl).Sync()
+	res := <-c.tpt.SendEvent(R, dtype.HDP_READ1, ":data", "deadline", dl).Sync()
 	logger.Debugf("%s got setReadDeadline result : %v", c.cid, res)
 	return res.Err()
 }
 
 // ===========================================================================
 func (c *HdpConn) SetWriteDeadline(dl time.Time) error {
-	res := <-c.tpt.SendEvent(W, dtype.HDP_DATAGRAM1, ":data", "deadline", dl).Sync()
+	res := <-c.tpt.SendEvent(W, dtype.HDP_WRITE1, ":data", "deadline", dl).Sync()
 	logger.Debugf("%s got setWriteDeadline result : %v", c.cid, res)
 	return res.Err()
 }

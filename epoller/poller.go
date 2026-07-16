@@ -146,6 +146,7 @@ func (r *ioRace) cancelIoByKey(mode ioMode, dlRef uint16, err error) {
 func (r *ioRace) deleteResultCh(mode ioMode, err error) func() {
 	ch := r.ch
 	r.ch = nil
+	r.err = nil
 	return func() {
 		dura := time.Duration(1) * time.Second
 		select {

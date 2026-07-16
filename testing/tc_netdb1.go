@@ -146,12 +146,12 @@ func listen2(errCh chan error, params Result) {
 
 // ===========================================================================
 func tc_netdb3(t *testing.T, params Result, args ...any) Result {
-	logger.Debugf("$$$$$$$$$$$ running tc_netdb2 $$$$$$$$$$$$")
+	logger.Debugf("$$$$$$$$$$$ running tc_netdb3 $$$$$$$$$$$$")
 	err := func() error {
 		errCh := make(chan error, 1)
 		go listen3(errCh, params)
 		go dial3(errCh, params)
-		logger.Debugf("tc_netdb2 is running ...")
+		logger.Debugf("tc_netdb3 is running ...")
 		dura := time.Duration(30) * time.Second
 		count := 0
 		for count < 2 {
@@ -193,7 +193,7 @@ func listen3(errCh chan error, params Result) {
 		errCh <- fmt.Errorf("params.acceptConn is undefined")
 		return
 	}
-	logger.Debugf("@@@@@@@@@@@@@@@ reusing listener.Accept conn @@@@@@@@@@@@@@@@@@@")
+	logger.Debugf("@@@@@@@@@@@@@@@ reusing listener.Accept conn 3 @@@@@@@@@@@@@@@@@@@")
 	b := make([]byte, 30)
 	n, err := conn.Read(b)
 	logger.Debugf("%s got conn.Read 1st result, num bytes, error, frame : %d, %v, %s", conn.Cid(), n, err, b)
