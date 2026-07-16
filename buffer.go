@@ -301,7 +301,6 @@ func (b *BufferR) writeTo(frame []byte) (int, error) {
 			return i + 1, nil
 		}
 	}
-	// len(frame) < b.this[0]
 	b.this[0] = b.this[0][i:]
 	return i + 1, nil
 }

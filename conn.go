@@ -20,6 +20,12 @@ func (c *HdpConn) Cid() string {
 }
 
 // ===========================================================================
+func (c *HdpConn) Close() error {
+	c.tpt.SendEvent(W, dtype.HDP_CLOSING).Async()
+	return nil
+}
+
+// ===========================================================================
 func (c *HdpConn) ReadHdr() {
 	c.tpt.SendEvent(R, dtype.HDP_READ1, ":data", "bytes", []byte{}).Async()
 }
@@ -83,24 +89,4 @@ func (c *HdpConn) SetWriteDeadline(dl time.Time) error {
 	res := <-c.tpt.SendEvent(W, dtype.HDP_WRITE1, ":data", "deadline", dl).Sync()
 	logger.Debugf("%s got setWriteDeadline result : %v", c.cid, res)
 	return res.Err()
-}
-
-// ===========================================================================
-// func (c *HdpConn) Start(pipeName string, ev dtype.HdpEvent) error {
-// }
-
-// ===========================================================================
-func (c *HdpConn) start() chan error {
-	ch := make(chan error, 1)
-	go func() {
-		for range 2 {
-			ev := <-c.tpt[C]
-			if ev.Err() != nil {
-				ch <- ev.Err()
-				return
-			}
-		}
-		ch <- nil
-	}()
-	return ch
 }

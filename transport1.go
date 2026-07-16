@@ -215,6 +215,8 @@ type hdpWrite2 struct {
 func (c *hdpWrite2) handle(req dtype.HdpEvent) {
 	logger.Debugf("%s is handling a request : %v ...", c.cid, req)
 	switch req.Flag2() {
+	case dtype.HDP_CLOSING:
+		c.sendClosing()
 	case dtype.HDP_DATA_ACK:
 		c.resetAckSeqnum(req)
 	case dtype.HDP_DATAGRAM:
@@ -303,6 +305,11 @@ func (c *hdpWrite2) setDeadline(req dtype.HdpEvent) {
 		"reqRef/mode", int(EV_WRITE),
 		"reqRef/deadline", req.Value("deadline")))
 	req.Ch() <- req.With(err)
+}
+
+// ===========================================================================
+func (c *hdpWrite2) sendClosing() {
+	c.writeHeader1(0, 0, dtype.HDP_RMT_CLOSING, 0, 0)
 }
 
 // ===========================================================================
