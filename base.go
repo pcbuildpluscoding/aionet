@@ -179,27 +179,6 @@ func NewHdpDialer() (*HdpDialer, error) {
 }
 
 // ===========================================================================
-func NewHdpListener0(network, address string) (*HdpListener0, error) {
-	laddr, err := net.ResolveUDPAddr(network, address)
-	if err != nil {
-		return nil, err
-	}
-
-	logger.Debugf("newHDPListener is calling newSocket ...")
-	s, err := newSocket(laddr, nil)
-	if err != nil {
-		return nil, err
-	}
-	l := &HdpListener0{
-		socket:         s,
-		cid:            "hdpListener-" + time.Now().Format("05.00000"),
-		connectTimeout: time.Duration(30) * time.Second,
-		tpt:            dtype.MultiCh{make(chan dtype.HdpEvent, 1), make(chan dtype.HdpEvent, 1)},
-	}
-	return l.start1()
-}
-
-// ===========================================================================
 func NewHdpListener(network, address string, windowSize uint16) (*HdpListener, error) {
 	laddr, err := net.ResolveUDPAddr(network, address)
 	if err != nil {

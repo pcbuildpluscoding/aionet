@@ -1,7 +1,6 @@
 package aionet
 
 import (
-	"fmt"
 	"io"
 	"time"
 
@@ -76,50 +75,6 @@ func (c *HdpListener) onAccept() (*HdpConn, error) {
 		cid: "hdpConn-" + time.Now().Format("05.00000"),
 		tpt: c.tpt,
 	}, nil
-}
-
-// ================================================================
-func (c *HdpListener) start0() (*HdpListener, error) {
-	logger.Debugf("%s is starting ...", c.cid)
-	err := c.init(c.cid + "|" + c.cid)
-	if err != nil {
-		return nil, err
-	}
-	s, err := newSocket0("listen", unix.SOCK_DGRAM, 0, nil, nil)
-	if err != nil {
-		return nil, err
-	}
-	readyCh := make(chan bool, 1)
-	refNum := [2]uint16{getRefNum(), 0}
-	cidR := "acceptRead1-" + time.Now().Format("05.00000")
-	s1 := s.newSocket1(cidR, 16)
-	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
-	<-readyCh
-	cidW := "acceptWrite1-" + time.Now().Format("05.00000")
-	s1 = s.newSocket1(cidW, 16)
-	go newHdpWrite1(s1, &refNum, c.tpt).run(readyCh)
-	<-readyCh
-	return c, s.init(cidR + "|" + cidW)
-}
-
-// ================================================================
-func (c *HdpListener0) start1() (*HdpListener0, error) {
-	logger.Debugf("%s is starting ...", c.cid)
-	saddr, err := addrToSockaddr(c.laddr).sockaddr()
-	if err != nil {
-		return nil, err
-	}
-	err = unix.Bind(c.fd, saddr)
-	if err != nil {
-		return nil, fmt.Errorf("%s failed to bind to %s, error : %v", c.cid, c.laddr.String(), err)
-	}
-	readyCh := make(chan bool, 1)
-	refNum := [2]uint16{getRefNum(), 0}
-	cid := "acceptRead1-" + time.Now().Format("05.00000")
-	s1 := c.newSocket1(cid, 16)
-	go newHdpRead1(s1, &refNum, c.tpt).run(readyCh)
-	<-readyCh
-	return c, c.init(c.cid + "|" + c.cid)
 }
 
 // ================================================================
