@@ -255,21 +255,18 @@ func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
 			return 0, VErrEOF
 		}
 		logger.Debugf("%s getting next seqNum ...", c.cid)
-		seqNum, _ := c.rb.nextSeqNum()
-		// if err != nil {
-		// 	return 0, err
-		// }
-		if !c.rb.windowFull() { // only proceed with frame write if ringBuffer is not full
-			logger.Debugf("%s ringbuffer has capacity ...", c.cid)
-			args := []any{dtype.HDP_WRITE2, ":data", "seqNum", seqNum}
-			if !c.peerSeqNum.isEmpty() {
-				args = append(args, "peerSeqNum", c.peerSeqNum.popLeft())
-			}
-			c.tpt[W] <- req.With(args...)
-			// if frame buffer is not full, add the next frame
-			return c.buffer.addEntry(req.Bytes(), seqNum, c.cid)
+		seqNum, err := c.rb.nextSeqNum()
+		if err != nil {
+			return 0, err
 		}
-		return 0, nil
+		logger.Debugf("%s ringbuffer has capacity ...", c.cid)
+		args := []any{dtype.HDP_WRITE2, ":data", "seqNum", seqNum}
+		if !c.peerSeqNum.isEmpty() {
+			args = append(args, "peerSeqNum", c.peerSeqNum.popLeft())
+		}
+		c.tpt[W] <- req.With(args...)
+		// if frame buffer is not full, add the next frame
+		return c.buffer.addEntry(req.Bytes(), seqNum, c.cid)
 	}()
 	if err != nil {
 		req.Ch() <- req.With(err)
