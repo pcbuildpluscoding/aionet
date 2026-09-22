@@ -71,8 +71,7 @@ func (c *hdpRead2) parseHeader() (dtype.HDP_STATE2, []byte, error) {
 		c.tpt[W] <- newHdpEvent(dtype.HDP_DATA_ACK, ":data", "bytes", hdr[2:10])
 	case dtype.HDP_DATAGRAM:
 		// push the peer seqNum and acknowledged local seqNum to the write channel
-		// and append the data size and checksum
-		logger.Debugf("%s got HDP_DATAGRAM frame with seqNum : %d", c.cid, binary.LittleEndian.Uint32(hdr[2:6]))
+		logger.Debugf("%s got HDP_DATAGRAM frame with seqNums : %d, %d", c.cid, binary.LittleEndian.Uint32(hdr[2:6]), binary.LittleEndian.Uint32(hdr[6:10]))
 		c.tpt[W] <- newHdpEvent(dtype.HDP_DATAGRAM, ":data", "bytes", hdr[2:10])
 	}
 	return flag, hdr[10:16], nil
@@ -207,6 +206,7 @@ type hdpWrite2 struct {
 	cid        string
 	rb         *ringBuffer
 	refNum     *[2]uint16
+	peerSeqNum BufferSN
 	// state      [2]dtype.HDP_STATE2
 	tpt dtype.MultiCh
 }
@@ -238,8 +238,13 @@ func (c *hdpWrite2) handle(req dtype.HdpEvent) {
 func (c *hdpWrite2) acknowSeqnum(req dtype.HdpEvent) {
 	data := req.Bytes()
 	seqNum := binary.LittleEndian.Uint32(data[:4])
-	logger.Debugf("%s is writing a seqNum[%d] acknowledgement to the peer conn ...", c.cid, seqNum)
-	_, _ = c.writeHeader1(0, seqNum, dtype.HDP_DATA_ACK, 0, 0)
+	if c.buffer.isEmpty() {
+		logger.Debugf("%s is writing a seqNum[%d] acknowledgement to the peer conn ...", c.cid, seqNum)
+		_, _ = c.writeHeader1(0, seqNum, dtype.HDP_DATA_ACK, 0, 0)
+	} else {
+		logger.Debugf("%s is storing a seqNum[%d] acknowledgement for the peer conn ...", c.cid, seqNum)
+		c.peerSeqNum.add(seqNum)
+	}
 }
 
 // ===========================================================================
@@ -250,16 +255,21 @@ func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
 			return 0, VErrEOF
 		}
 		logger.Debugf("%s getting next seqNum ...", c.cid)
-		seqNum, err := c.rb.nextSeqNum()
-		if err != nil {
-			return 0, err
-		}
+		seqNum, _ := c.rb.nextSeqNum()
+		// if err != nil {
+		// 	return 0, err
+		// }
 		if !c.rb.windowFull() { // only proceed with frame write if ringBuffer is not full
 			logger.Debugf("%s ringbuffer has capacity ...", c.cid)
-			c.tpt[W] <- req.With(dtype.HDP_WRITE2, ":data", "seqNum", seqNum)
+			args := []any{dtype.HDP_WRITE2, ":data", "seqNum", seqNum}
+			if !c.peerSeqNum.isEmpty() {
+				args = append(args, "peerSeqNum", c.peerSeqNum.popLeft())
+			}
+			c.tpt[W] <- req.With(args...)
+			// if frame buffer is not full, add the next frame
+			return c.buffer.addEntry1(req.Bytes(), seqNum, c.cid)
 		}
-		// if frame buffer is not full, add the next frame
-		return c.buffer.addEntry1(req.Bytes(), seqNum, c.cid)
+		return 0, nil
 	}()
 	if err != nil {
 		req.Ch() <- req.With(err)
@@ -342,8 +352,9 @@ func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
 		return
 	}
 	seqNum := req.UInt32("seqNum")
-	logger.Debugf("@@@@@@@@@@@@@@@@@ %s got seqNum for write header : %d", c.cid, seqNum)
-	_, err = c.writeHeader(seqNum, 0, fr.B)
+	peerSeqNum := req.UInt32("peerSeqNum")
+	logger.Debugf("@@@@@@@@@@@@@@@@@ %s got seqNums for write header : %d, %d", c.cid, seqNum, peerSeqNum)
+	_, err = c.writeHeader(seqNum, peerSeqNum, fr.B)
 	if err != nil {
 		req.Ch() <- newHdpEvent(err)
 		return
@@ -363,6 +374,7 @@ func (c *hdpWrite2) writeFrame(req dtype.HdpEvent) {
 		case <-ch:
 			logger.Debugf("%s frame[%d] was acknowledged by the peer conn", c.cid, seqNum)
 			c.rb.updateAckSeqNum(seqNum)
+			c.buffer.pop(seqNum)
 			return
 		}
 	}()

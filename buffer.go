@@ -25,6 +25,33 @@ func (e *bufEntry) getFrame(resend bool) []byte {
 }
 
 // ================================================================//
+// BufferSN
+// ================================================================//
+type BufferSN struct {
+	seqNum []uint32
+}
+
+// ================================================================
+func (b BufferSN) add(seqNum uint32) {
+	b.seqNum = append(b.seqNum, seqNum)
+}
+
+// ================================================================
+func (b BufferSN) isEmpty() bool {
+	return len(b.seqNum) == 0
+}
+
+// ================================================================
+func (b BufferSN) popLeft() uint32 {
+	if len(b.seqNum) == 0 {
+		return 0
+	}
+	seqNum := b.seqNum[0]
+	b.seqNum = b.seqNum[1:]
+	return seqNum
+}
+
+// ================================================================//
 // BufferW
 // ================================================================//
 type BufferW struct {

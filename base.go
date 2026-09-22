@@ -70,6 +70,13 @@ func newBufferW(writeBufferSize int) BufferW {
 }
 
 // ===========================================================================
+func newBufferSN() BufferSN {
+	return BufferSN{
+		seqNum: []uint32{},
+	}
+}
+
+// ===========================================================================
 func newHdpEvent(args ...any) dtype.HdpEvent {
 	x := dtype.HdpEvent{}
 	return x.With(args...)
@@ -123,6 +130,7 @@ func newHdpWrite2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh, windo
 		buffer:     newBufferW(16),
 		rb:         newRingBuffer(uint32(windowSize)),
 		refNum:     rn,
+		peerSeqNum: newBufferSN(),
 		tpt:        tpt,
 	}
 }
