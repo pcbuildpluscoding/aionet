@@ -15,33 +15,29 @@ func newRingItem(seqNum uint32) *ringItem {
 // gyroNumber
 // ==================================================================//
 type gyroNumber struct {
-	recycled   bool
-	seqNum     uint32
-	firstUnAck *ringItem
-	window     uint32
+	seqNum      uint32
+	oldestUnack *ringItem
+	window      uint32
 }
 
 // ---------------------------------------------------------------//
 // windowFull
 // ---------------------------------------------------------------//
 func (g *gyroNumber) windowFull() bool {
-	if g.firstUnAck == nil {
+	if g.oldestUnack == nil {
 		return false
 	}
-	diff := g.seqNum - g.firstUnAck.seqNum
+	diff := g.seqNum - g.oldestUnack.seqNum
 	mod := diff % g.window
-	// logger.Debugf("full testing, seqNum, firstUnAck, full? : %d, %d, %v", g.seqNum, g.firstUnAck.seqNum, g.seqNum > 0 && mod == 0)
-	if g.recycled {
-		return mod == 0
-	}
-	return g.seqNum > 1 && mod == 0
+	// logger.Debugf("full testing, seqNum, oldestUnack, full? : %d, %d, %v", g.seqNum, g.oldestUnack.seqNum, g.seqNum > 0 && mod == 0)
+	return mod == 0
 }
 
 // ---------------------------------------------------------------//
 // init1
 // ---------------------------------------------------------------//
 func (g *gyroNumber) init() {
-	g.firstUnAck = nil
+	g.oldestUnack = nil
 	g.seqNum = 1
 }
 
@@ -63,7 +59,6 @@ func (g *gyroNumber) next() (uint32, uint32, error) {
 	seqNum := g.seqNum
 	if g.seqNum+1 == math.MaxUint32 {
 		g.seqNum = 1
-		g.recycled = true
 	} else {
 		g.seqNum++
 	}
@@ -74,30 +69,25 @@ func (g *gyroNumber) next() (uint32, uint32, error) {
 // HasCapacity
 // ---------------------------------------------------------------//
 func (g *gyroNumber) updateUnAck(item *ringItem) {
-	if item != nil && item.sentAck {
-		// logger.Debugf("unacknowledged seqNum is nil")
-		g.firstUnAck = nil
-		return
-	}
-	g.firstUnAck = item
+	g.oldestUnack = item
 }
 
 // ---------------------------------------------------------------//
 // ackNumIsOldest
 // ---------------------------------------------------------------//
 func (g *gyroNumber) ackNumIsOldest(item *ringItem) bool {
-	if g.firstUnAck == nil {
+	if g.oldestUnack == nil {
 		return true
 	}
-	return g.firstUnAck == item
+	return g.oldestUnack == item
 }
 
 // ==================================================================//
 // ringItem
 // ==================================================================//
 type ringItem struct {
-	seqNum  uint32
-	sentAck bool
+	seqNum       uint32
+	acknowledged bool
 }
 
 // ---------------------------------------------------------------//
@@ -105,7 +95,7 @@ type ringItem struct {
 // ---------------------------------------------------------------//
 func (i *ringItem) reset() {
 	i.seqNum = 0
-	i.sentAck = true
+	i.acknowledged = true
 }
 
 // ==================================================================//
@@ -123,6 +113,9 @@ func (b *ringBuffer) windowFull() bool {
 
 // ==================================================================
 func (b *ringBuffer) nextSeqNum() (uint32, error) {
+	if b.gyro.windowFull() {
+		return 0, NewHdpError(ErrRingBufferFull)
+	}
 	_, seqNum, err := b.gyro.next()
 	return seqNum, err
 }
@@ -134,8 +127,8 @@ func (b *ringBuffer) setNextItem(seqNum uint32) {
 	// }
 	i := b.gyro.modulus(seqNum)
 	item := newRingItem(seqNum)
-	if b.gyro.firstUnAck == nil {
-		b.gyro.firstUnAck = item
+	if b.gyro.oldestUnack == nil {
+		b.gyro.oldestUnack = item
 	}
 	b.this[i] = item
 	// logger.Debugf("$$$$$$ next send rindex, seqNum : %d, %d", i, seqNum)
@@ -149,8 +142,8 @@ func (b *ringBuffer) updateAckSeqNum(seqNum uint32) error {
 	if item == nil {
 		return fmt.Errorf("%d seqNumAck is invalid", seqNum)
 	} else if item.seqNum != seqNum {
-		if item.seqNum == 0 && item.sentAck {
-			// logger.Debugf("seqNum %d is already acknowledged", seqNum)
+		if item.seqNum == 0 && item.acknowledged {
+			logger.Debugf("seqNum %d is already acknowledged", seqNum)
 			return nil
 		}
 		return fmt.Errorf("seqNumAck does not match the reference value : %d, %d", seqNum, item.seqNum)
@@ -158,7 +151,7 @@ func (b *ringBuffer) updateAckSeqNum(seqNum uint32) error {
 	logger.Debugf("acknowledged index, seqNum, ringItem.seqNum : %d, %d, %d", j, seqNum, item.seqNum)
 	if !b.gyro.ackNumIsOldest(b.this[j]) {
 		item.reset()
-		logger.Debugf("acknowSeqNum %d is not the oldest for this session : %d", seqNum, b.gyro.firstUnAck.seqNum)
+		logger.Debugf("acknowSeqNum %d is not the oldest for this session : %d", seqNum, b.gyro.oldestUnack.seqNum)
 		return nil
 	}
 	item.reset()
@@ -168,13 +161,12 @@ func (b *ringBuffer) updateAckSeqNum(seqNum uint32) error {
 		k = (j + i) % b.gyro.window
 		// logger.Debugf("next window index : %d", k)
 		item = b.this[k]
-		if item != nil && !item.sentAck {
-			break
+		if item != nil && !item.acknowledged {
+			b.gyro.oldestUnack = item
+			logger.Debugf("next unacknowledged seqnum index, seqNum : %d, %d", k, b.this[k].seqNum)
+			return nil
 		}
 	}
-	if item != nil {
-		logger.Debugf("next acknowledged index, seqNum : %d, %d", k, b.this[k].seqNum)
-	}
-	b.gyro.updateUnAck(b.this[k])
+	logger.Debugf("ringbuffer has no unacknowledged items")
 	return nil
 }
