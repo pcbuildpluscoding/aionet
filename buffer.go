@@ -54,6 +54,41 @@ func (b BufferSN) popLeft() uint32 {
 // ================================================================//
 // BufferW
 // ================================================================//
+type BuffrW struct {
+	this    map[uint32][]byte
+	maxsize int
+}
+
+// ================================================================
+func (w *BuffrW) isEmpty() bool {
+	logger.Debugf("BufferW current size : %d", len(w.this))
+	return len(w.this) == 0
+}
+
+// ================================================================
+func (w *BuffrW) isFull() bool {
+	logger.Debugf("BufferW current size : %d", len(w.this))
+	return len(w.this) == w.maxsize
+}
+
+// ================================================================
+func (w *BuffrW) addEntry(frame []byte, seqNum uint32, cid string) (int, error) {
+	n := len(frame)
+	logger.Debugf("%s BufferW seqNum[%d] for data frame[%d]", cid, seqNum, n)
+	w.this[seqNum] = frame
+	return n, nil
+}
+
+// ================================================================
+func (b *BuffrW) pop(seqNum uint32) []byte {
+	e := b.this[seqNum]
+	delete(b.this, seqNum)
+	return e
+}
+
+// ================================================================//
+// BufferW
+// ================================================================//
 type BufferW struct {
 	this   map[uint32]*bufEntry
 	resend []uint32

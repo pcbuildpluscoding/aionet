@@ -202,7 +202,7 @@ type hdpWrite2 struct {
 	*socket
 	ackTimeout time.Duration
 	ackDoneCh  map[uint32]chan bool
-	buffer     BufferW
+	buffer     BuffrW
 	cid        string
 	rb         *ringBuffer
 	refNum     *[2]uint16
@@ -267,7 +267,7 @@ func (c *hdpWrite2) putFrame(req dtype.HdpEvent) {
 			}
 			c.tpt[W] <- req.With(args...)
 			// if frame buffer is not full, add the next frame
-			return c.buffer.addEntry1(req.Bytes(), seqNum, c.cid)
+			return c.buffer.addEntry(req.Bytes(), seqNum, c.cid)
 		}
 		return 0, nil
 	}()

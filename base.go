@@ -70,6 +70,17 @@ func newBufferW(writeBufferSize int) BufferW {
 }
 
 // ===========================================================================
+func newBuffrW(writeBufferSize int) BuffrW {
+	if writeBufferSize < 16 {
+		writeBufferSize = 16
+	}
+	return BuffrW{
+		this:    map[uint32][]byte{},
+		maxsize: writeBufferSize,
+	}
+}
+
+// ===========================================================================
 func newBufferSN() BufferSN {
 	return BufferSN{
 		seqNum: []uint32{},
@@ -127,7 +138,7 @@ func newHdpWrite2(s *socket, cid string, rn *[2]uint16, tpt dtype.MultiCh, windo
 		ackDoneCh:  map[uint32]chan bool{},
 		ackTimeout: 7 * time.Second,
 		cid:        cid,
-		buffer:     newBufferW(16),
+		buffer:     newBuffrW(16),
 		rb:         newRingBuffer(uint32(windowSize)),
 		refNum:     rn,
 		peerSeqNum: newBufferSN(),
